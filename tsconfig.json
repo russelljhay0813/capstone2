@@ -1,0 +1,64 @@
+{
+  // ------------------------------
+  // TypeScript Configuration for Vite + React (TanStack Start)
+  // ------------------------------
+
+  // Files and folders to include in the compilation
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "vite.config.ts",
+    "eslint.config.js",
+    "vite-env.d.ts"
+  ],
+
+  "compilerOptions": {
+    // ECMAScript target version
+    "target": "ES2022",
+
+    // JSX support for React 17+ (automatic runtime)
+    "jsx": "react-jsx",
+
+    // Module system used by the bundler (Vite)
+    "module": "ESNext",
+
+    // Built-in type definitions available
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    // Environment types (Vite provides import.meta.env)
+    "types": ["vite/client"],
+
+    // ------------------------------
+    // Module resolution (Vite uses bundler)
+    // ------------------------------
+    "moduleResolution": "Bundler",    // Use "Bundler" for Vite
+    "allowImportingTsExtensions": true, // Allow importing .ts files without extension
+    "verbatimModuleSyntax": false,    // Keep imports as written (no transformation)
+    "noEmit": true,                   // Don't emit output (Vite handles build)
+
+    // ------------------------------
+    // Strictness and quality
+    // ------------------------------
+    "skipLibCheck": true,             // Skip type checking of declaration files
+    "strict": true,                   // Enable all strict type-checking options
+    "noUnusedLocals": false,          // (Your preference) Warn on unused locals
+    "noUnusedParameters": false,      // (Your preference) Warn on unused parameters
+    "noFallthroughCasesInSwitch": true, // Error on switch fallthrough
+    "noUncheckedSideEffectImports": true, // Ensure imports are side‑effect‑free
+
+    // ------------------------------
+    // Path aliases
+    // ------------------------------
+    "paths": {
+      "@/*": ["./src/*"]              // Allows `import { ... } from "@/..."`
+    },
+
+    // ------------------------------
+    // Additional useful flags
+    // ------------------------------
+    "resolveJsonModule": true,        // Allow importing .json files
+    "esModuleInterop": true,          // Enables compatibility with CommonJS modules
+    "allowSyntheticDefaultImports": true, // Allow default imports from CommonJS
+    "forceConsistentCasingInFileNames": true // Prevent case‑sensitivity issues
+  }
+}
