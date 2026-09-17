@@ -2,15 +2,10 @@
  * Validates a student registration payload.
  * Checks that all required fields are present and non-empty.
  *
- * In the new schema, these fields are used to determine initial enrollment,
- * but are not stored directly on the student record (they go into enrollments
- * via sections and subjectOfferings). However, they are still required for
- * registration to auto-enroll the student.
- *
  * @param {Object} payload - The registration payload.
  * @returns {Object} { isValid: boolean, missing: string[] }
  */
-function validateRegistrationPayload(payload) {
+export function validateRegistrationPayload(payload) {
   const requiredFields = [
     "firstName",
     "lastName",
@@ -29,10 +24,10 @@ function validateRegistrationPayload(payload) {
     "parentName",
     "parentRelationship",
     "parentContact",
-    "program",        // Used to find the program ID
-    "yearLevel",      // Used to find/create section
-    "semester",       // Used to find/create section
-    "academicYear",   // Used to find/create section
+    "program",
+    "yearLevel",
+    "semester",
+    "academicYear",
   ];
 
   const missing = requiredFields.filter((field) => {
@@ -54,11 +49,9 @@ function validateRegistrationPayload(payload) {
  * @param {Object} validationResult - Result from validateRegistrationPayload.
  * @returns {string} The resolved status.
  */
-function resolveAutoApprovalStatus(currentStatus, validationResult) {
+export function resolveAutoApprovalStatus(currentStatus, validationResult) {
   if (validationResult?.isValid) {
     return "approved";
   }
   return String(currentStatus || "submitted");
 }
-
-export { validateRegistrationPayload, resolveAutoApprovalStatus };

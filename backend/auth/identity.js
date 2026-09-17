@@ -13,7 +13,6 @@ import jwt from "jsonwebtoken";
  * @returns {{ role: string, userId: string, studentId: string }}
  */
 export function resolveRequestIdentity(req, jwtSecret) {
-  // 1. Try to get identity from Bearer token
   const authHeader = req.get("Authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
 
@@ -22,15 +21,14 @@ export function resolveRequestIdentity(req, jwtSecret) {
       const payload = jwt.verify(token, jwtSecret);
       return {
         role: String(payload.role || "").toLowerCase(),
-        userId: String(payload.id || ""),           // users.id (UUID)
-        studentId: String(payload.studentId || ""), // optional human‑readable
+        userId: String(payload.id || ""),
+        studentId: String(payload.studentId || ""),
       };
     } catch {
-      // Token invalid – fall through to header‑based identity
+      // Token invalid – fall through to header-based identity
     }
   }
 
-  // 2. Fallback: read from custom headers (e.g., for testing / internal services)
   const roleHeader = String(req.get("x-user-role") || "").toLowerCase();
   const userIdHeader = String(req.get("x-user-id") || "");
   const studentIdHeader = String(req.get("x-user-student-id") || "");
@@ -43,7 +41,6 @@ export function resolveRequestIdentity(req, jwtSecret) {
     };
   }
 
-  // 3. Development fallback – returns admin role for local testing
   if (process.env.NODE_ENV === "production") {
     return {
       role: "",

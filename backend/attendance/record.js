@@ -19,10 +19,9 @@ export function buildAttendanceRecordPayload({
   status,
   time,
 }) {
-  // Validate required fields
   if (!studentUuid || !subjectOfferingId || !date || !status) {
     throw new Error(
-      "Missing required fields: studentUuid, subjectOfferingId, date, and status are required"
+      "Missing required fields: studentUuid, subjectOfferingId, date, and status are required",
     );
   }
 

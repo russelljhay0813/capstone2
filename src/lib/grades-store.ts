@@ -1,30 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { fetchGrades, saveGrade, deleteGradeApi, type GradeEntry } from "./api";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 const EVENT = "bwest:grades-changed";
 
 function broadcastUpdate() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(EVENT));
-}
-
-let eventSource: EventSource | null = null;
-
-function ensureGradeEventSource() {
-  if (typeof window === "undefined") return;
-  if (!eventSource) {
-    eventSource = new EventSource(`${API_BASE}/api/events/grades`);
-    eventSource.onmessage = () => {
-      window.dispatchEvent(new CustomEvent(EVENT));
-    };
-    eventSource.onerror = () => {
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-    };
-  }
 }
 
 export async function addOrUpdateGrade(
@@ -82,7 +63,6 @@ export function useGrades() {
 
   useEffect(() => {
     refresh();
-    ensureGradeEventSource();
     const onChange = () => {
       refresh();
     };
@@ -113,7 +93,6 @@ export function useStudentGrades(studentId: string) {
 
   useEffect(() => {
     refresh();
-    ensureGradeEventSource();
     const onChange = () => {
       refresh();
     };

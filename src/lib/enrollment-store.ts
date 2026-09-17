@@ -15,24 +15,6 @@ function broadcastUpdate() {
   window.dispatchEvent(new CustomEvent(ENROLLMENT_EVENT));
 }
 
-let eventSource: EventSource | null = null;
-
-function ensureEnrollmentEventSource() {
-  if (typeof window === "undefined") return;
-  if (!eventSource) {
-    eventSource = new EventSource(`${API_BASE}/api/events/enrollments`);
-    eventSource.onmessage = () => {
-      window.dispatchEvent(new CustomEvent(ENROLLMENT_EVENT));
-    };
-    eventSource.onerror = () => {
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-    };
-  }
-}
-
 export async function fetchEnrollments(
   studentId?: string,
   offeringId?: string,
@@ -65,7 +47,6 @@ export function useEnrollments(studentId?: string) {
 
   useEffect(() => {
     refresh();
-    ensureEnrollmentEventSource();
     const onChange = () => {
       refresh();
     };
@@ -95,7 +76,6 @@ export function useStudentEnrollments(studentId: string) {
 
   useEffect(() => {
     refresh();
-    ensureEnrollmentEventSource();
     const onChange = () => {
       refresh();
     };
@@ -128,7 +108,6 @@ export function useEnrolledOfferings(studentId: string): SubjectOffering[] {
       }
     };
     refresh();
-    ensureEnrollmentEventSource();
     const onChange = () => {
       refresh();
     };

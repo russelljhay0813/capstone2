@@ -2,9 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { User, Mail, BookOpen, Building2, Camera, Lock } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { fetchUsers, type UserAccount } from "@/lib/api";
 import { fetchSubjectOfferings, type SubjectOffering } from "@/lib/api";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard/faculty/profile")({
@@ -13,34 +12,18 @@ export const Route = createFileRoute("/dashboard/faculty/profile")({
 
 function FacultyProfile() {
   const { user } = useAuth();
-  const [facultyInfo, setFacultyInfo] = useState<UserAccount | null>(null);
   const [assignedOfferings, setAssignedOfferings] = useState<SubjectOffering[]>([]);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
-  const loadFacultyInfo = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const allUsers = await fetchUsers();
-      const facultyUser = allUsers.find((u) => u.id === user.id);
-      setFacultyInfo((facultyUser as UserAccount) || null);
-    } catch {
-      setFacultyInfo(null);
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    loadFacultyInfo();
-  }, [loadFacultyInfo]);
-
   useEffect(() => {
     const loadAssignedOfferings = async () => {
       if (!user?.id) return;
       try {
-        const allOfferings = await fetchSubjectOfferings();
-        setAssignedOfferings(allOfferings.filter((o) => o.facultyId === (user.facultyId || user.id)));
+        const offerings = await fetchSubjectOfferings({ facultyId: user.facultyId || user.id });
+        setAssignedOfferings(offerings);
       } catch {
         setAssignedOfferings([]);
       }
@@ -113,7 +96,7 @@ function FacultyProfile() {
           <div>
             <span className="text-xs text-muted-foreground">Department</span>
             <p className="font-medium text-foreground">
-              {user?.program || facultyInfo?.program || "—"}
+              {user?.program || "—"}
             </p>
           </div>
         </div>

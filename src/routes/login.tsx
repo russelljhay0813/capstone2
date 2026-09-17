@@ -83,7 +83,7 @@ function LoginPage() {
             lastName: studentRecord.lastName,
             role: "student",
             status: "active",
-            // program, yearLevel, semester, academicYear removed – not stored on student
+            studentId: studentRecord.studentId,
             createdAt: studentRecord.submittedAt,
             token: (studentRecord as any).token,
           };
@@ -125,9 +125,9 @@ function LoginPage() {
         name: `${ua.firstName} ${ua.lastName}`,
         email: ua.email,
         role: ua.role,
-          userId: ua.userId,
+        userId: ua.role === "student" ? (ua.studentId ?? ua.userId ?? studentRecord?.studentId ?? ua.id) : ua.userId,
         token: ua.token ?? (studentRecord as any)?.token,
-        studentId: ua.studentId ?? studentRecord?.studentId ?? undefined,
+        studentId: ua.role === "student" ? (ua.studentId ?? studentRecord?.studentId ?? ua.userId ?? undefined) : undefined,
         // In new schema, these are not on student – only keep if they exist (for backward compatibility)
         program: (studentRecord as any)?.program || ua.program,
         yearLevel: (studentRecord as any)?.yearLevel || ua.yearLevel,

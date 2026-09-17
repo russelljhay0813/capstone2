@@ -66,6 +66,22 @@ async function request<T>(path: string, opts: RequestInit = {}, authToken?: stri
   }
 }
 
+async function requestAllPages<T>(path: string, params: URLSearchParams): Promise<T[]> {
+  params.set("page", "1");
+  params.set("limit", "100");
+  const firstPage = await request<{ data: T[]; totalPages: number }>(`${path}?${params}`);
+  if (firstPage.totalPages <= 1) return firstPage.data;
+
+  const remainingPages = await Promise.all(
+    Array.from({ length: firstPage.totalPages - 1 }, (_, index) => {
+      const pageParams = new URLSearchParams(params);
+      pageParams.set("page", String(index + 2));
+      return request<{ data: T[] }>(`${path}?${pageParams}`);
+    }),
+  );
+  return [firstPage.data, ...remainingPages.map((page) => page.data)].flat();
+}
+
 // ---------- NEW: Subject Offerings ----------
 export interface SubjectOffering {
   id: string;
@@ -106,9 +122,7 @@ export async function fetchSubjectOfferings(filters?: {
   if (filters?.sectionId) params.set("sectionId", filters.sectionId);
   if (filters?.facultyId) params.set("facultyId", filters.facultyId);
   if (filters?.subjectId) params.set("subjectId", filters.subjectId);
-  const query = params.toString() ? `?${params.toString()}` : "";
-  const response = await request<{ data: SubjectOffering[] }>(`/api/subject-offerings${query}`);
-  return response.data;
+  return requestAllPages<SubjectOffering>("/api/subject-offerings", params);
 }
 
 export async function createSubjectOffering(offering: {
@@ -461,9 +475,7 @@ export async function fetchEnrollments(
   if (studentId) params.set("studentId", studentId);
   if (resolvedOfferingId) params.set("offeringId", resolvedOfferingId);
   if (resolvedStatus) params.set("status", resolvedStatus);
-  const query = params.toString() ? `?${params.toString()}` : "";
-  const response = await request<{ data: StudentEnrollment[] }>(`/api/enrollments${query}`);
-  return response.data;
+  return requestAllPages<StudentEnrollment>("/api/enrollments", params);
 }
 
 export async function createEnrollments(data: {
@@ -508,9 +520,7 @@ export async function fetchGrades(
 
   if (offeringId) params.set("subjectOfferingId", offeringId);
   if (resolvedStudentId) params.set("studentId", resolvedStudentId);
-  const query = params.toString() ? `?${params.toString()}` : "";
-  const response = await request<{ data: GradeEntry[] }>(`/api/grades${query}`);
-  return response.data;
+  return requestAllPages<GradeEntry>("/api/grades", params);
 }
 
 export async function saveGrade(grade: {
@@ -842,8 +852,10 @@ export interface NotificationItem {
 }
 
 export async function fetchNotifications(userId: string): Promise<NotificationItem[]> {
-  const response = await request<{ data: NotificationItem[] }>(`/api/notifications?userId=${encodeURIComponent(userId)}`);
-  return response.data;
+  const response = await request<NotificationItem[] | { data: NotificationItem[] }>(
+    `/api/notifications?userId=${encodeURIComponent(userId)}`,
+  );
+  return Array.isArray(response) ? response : response.data;
 }
 
 // ---------- DASHBOARD STATS ----------

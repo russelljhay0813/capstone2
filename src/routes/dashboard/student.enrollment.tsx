@@ -4,7 +4,7 @@ import { BookOpen, Sparkles, RefreshCw, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useEnrollments } from "@/lib/enrollment-store"; // new store that uses offeringId
 import { useGrades } from "@/lib/grades-store";
-import { fetchSubjectOfferings, fetchCurriculum, reenrollStudent } from "@/lib/api";
+import { fetchCurriculum, reenrollStudent } from "@/lib/api";
 import { useState, useEffect } from "react";
 
 export const Route = createFileRoute("/dashboard/student/enrollment")({
@@ -15,7 +15,6 @@ function StudentEnrollment() {
   const { user } = useAuth();
   const enrollments = useEnrollments(user?.studentId ?? ""); // returns offerings with subject details
   const grades = useGrades();
-  const [offerings, setOfferings] = useState<any[]>([]);
   const [showReenrollModal, setShowReenrollModal] = useState(false);
   const [canReenroll, setCanReenroll] = useState(false);
   const [nextSemesterInfo, setNextSemesterInfo] = useState<{
@@ -25,19 +24,6 @@ function StudentEnrollment() {
   const [curriculumSubjects, setCurriculumSubjects] = useState<
     { code: string; title: string; units: number }[]
   >([]);
-
-  // Get offerings for display
-  useEffect(() => {
-    const loadOfferings = async () => {
-      try {
-        const data = await fetchSubjectOfferings();
-        setOfferings(data);
-      } catch {
-        setOfferings([]);
-      }
-    };
-    loadOfferings();
-  }, []);
 
   const totalUnits = enrollments.reduce((sum, e) => sum + (e.units || 0), 0);
   const program = user?.program || "";
@@ -178,7 +164,6 @@ function StudentEnrollment() {
         ) : (
           <div className="space-y-2">
             {enrollments.map((enrollment) => {
-              const offering = offerings.find((o) => o.id === enrollment.subjectOfferingId);
               const grade = grades.find(
                 (g) => g.studentId === user?.studentId && g.subjectOfferingId === enrollment.subjectOfferingId,
               );
@@ -194,12 +179,12 @@ function StudentEnrollment() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-heading text-sm font-bold text-foreground">
-                        {offering?.subjectCode || "—"}
+                        {enrollment.subjectCode || "—"}
                       </span>
-                      <span className="text-sm text-foreground">{offering?.subjectTitle || "—"}</span>
+                      <span className="text-sm text-foreground">{enrollment.subjectTitle || "—"}</span>
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      {offering?.schedule || "TBA"} · {offering?.room || "TBA"} · Instructor: {offering?.facultyName || "TBA"}
+                      {enrollment.schedule || "TBA"} · {enrollment.room || "TBA"} · Instructor: {enrollment.facultyName || "TBA"}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -210,7 +195,7 @@ function StudentEnrollment() {
                       </>
                     )}
                     <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
-                      {offering?.units || 0} units
+                      {enrollment.units || 0} units
                     </span>
                   </div>
                 </motion.div>

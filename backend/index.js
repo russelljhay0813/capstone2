@@ -3,12 +3,12 @@ import cors from "cors";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { openDb, initDb, run, all, get, withTransaction } from "./db.js";
-import { normalizeStudentPayload, normalizeUserPayload } from "./schema-utils.js";
-import { inferReenrollmentTarget, resolveProgramIdForStudent } from "./reenrollment-utils.js";
-import { resolveAutoApprovalStatus, validateRegistrationPayload } from "./registration-workflow.js";
-import { resolveRequestIdentity } from "./auth-utils.js";
-import { buildAttendanceRecordPayload } from "./attendance-utils.js";
-import { buildGradeFinalizationQuery } from "./grade-finalization-utils.js";
+import { normalizeStudentPayload, normalizeUserPayload } from "./students/normalize.js";
+import { inferReenrollmentTarget, resolveProgramIdForStudent } from "./enrollment/reenrollment.js";
+import { resolveAutoApprovalStatus, validateRegistrationPayload } from "./registration/workflow.js";
+import { resolveRequestIdentity } from "./auth/identity.js";
+import { buildAttendanceRecordPayload } from "./attendance/record.js";
+import { buildGradeFinalizationQuery } from "./grades/finalization.js";
 
 import { EventEmitter } from "node:events";
 
@@ -335,18 +335,11 @@ function applyRateLimit(req, res, next) {
 function requireRole(...allowedRoles) {
   return (req, res, next) => {
     const identity = getRequestIdentity(req);
-    const headerRole = String(req.get("x-user-role") || "").toLowerCase();
-    const headerUserId = String(req.get("x-user-id") || "");
-    const role =
-      allowedRoles.includes(identity.role) ||
-      !allowedRoles.includes(headerRole) ||
-      (identity.userId && headerUserId && identity.userId !== headerUserId)
-        ? identity.role
-        : headerRole;
-    if (!allowedRoles.includes(role)) {
+    const normalizedRole = String(identity.role || "").toLowerCase();
+    if (!allowedRoles.includes(normalizedRole)) {
       return res.status(403).json({ error: "Forbidden" });
     }
-    req.userContext = { ...identity, role };
+    req.userContext = { ...identity, role: normalizedRole };
     next();
   };
 }
@@ -393,6 +386,11 @@ function verifyPassword(password, storedPassword) {
   const actual = Buffer.from(derived, "hex");
   if (expected.length !== actual.length) return false;
   return crypto.timingSafeEqual(expected, actual);
+}
+
+function formatRegistrationValidationMessage(field) {
+  const labels = { region: "Region" };
+  return `${labels[field] || field} is required.`;
 }
 
 function sanitizeStudentRecord(student) {
@@ -1086,6 +1084,14 @@ app.post(
     const nextId = `${new Date().getFullYear()}-${String((count?.cnt || 0) + 1).padStart(5, "0")}`;
     const passwordHash = hashPassword(String(password));
 
+    const registrationValidation = validateRegistrationPayload(req.body);
+    if (!registrationValidation.isValid) {
+      return res.status(400).json({
+        error: "Validation error",
+        details: registrationValidation.missing.map(formatRegistrationValidationMessage),
+      });
+    }
+
     const student = {
       id: crypto.randomUUID(),
       studentId: nextId,
@@ -1129,7 +1135,7 @@ app.post(
       placeOfBirth,
       barangay,
       parentRelationship,
-      status: resolveAutoApprovalStatus(req.body.status || "pending", validateRegistrationPayload(req.body)),
+      status: resolveAutoApprovalStatus(req.body.status || "pending", registrationValidation),
       submittedAt: Date.now(),
       reviewedAt: null,
       reviewNote: null,
@@ -1228,6 +1234,14 @@ app.put(
     const existing = await get(db, "SELECT * FROM students WHERE studentId = ?", [req.params.studentId]);
     if (!existing) return res.status(404).json({ error: "Student not found" });
 
+    const validationResult = validateRegistrationPayload(req.body);
+    if (req.body.status === "submitted" && !validationResult.isValid) {
+      return res.status(400).json({
+        error: "Validation error",
+        details: validationResult.missing.map(formatRegistrationValidationMessage),
+      });
+    }
+
     const updates = {
       ...existing,
       firstName: req.body.firstName ?? existing.firstName,
@@ -1246,6 +1260,7 @@ app.put(
       lastGrade: req.body.lastGrade ?? existing.lastGrade,
       contactNumber: req.body.contactNumber ?? existing.contactNumber,
       address: req.body.address ?? existing.address,
+      region: req.body.region ?? existing.region,
       city: req.body.city ?? existing.city,
       province: req.body.province ?? existing.province,
       zip: req.body.zip ?? existing.zip,
@@ -1271,7 +1286,7 @@ app.put(
       parentRelationship: req.body.parentRelationship ?? existing.parentRelationship,
       status:
         req.body.status === "submitted"
-          ? resolveAutoApprovalStatus(existing.status, validateRegistrationPayload(req.body))
+          ? resolveAutoApprovalStatus(existing.status, validationResult)
           : req.body.status ?? existing.status,
       reviewedAt: req.body.reviewedAt ?? existing.reviewedAt,
       reviewNote: req.body.reviewNote ?? existing.reviewNote,
@@ -1426,14 +1441,33 @@ app.post(
 // ---------------------------------------------------------------------
 // ENROLLMENTS (using subjectOfferings)
 // ---------------------------------------------------------------------
-app.get("/api/enrollments", requireRole("admin", "registrar", "student"), async (req, res) => {
+app.get("/api/enrollments", requireRole("admin", "registrar", "student", "faculty"), async (req, res) => {
+  const identity = req.userContext;
   const studentIdStr = req.query.studentId ? String(req.query.studentId) : null;
   const studentUuid = studentIdStr ? await resolveStudentUuid(studentIdStr) : null;
   const status = req.query.status ? String(req.query.status) : null;
 
   let where = "1=1";
   const params = [];
+
+  if (identity.role === "student") {
+    const currentStudentUuid = await resolveStudentUuid(identity.studentId || identity.userId);
+    if (!currentStudentUuid) return res.status(403).json({ error: "Forbidden" });
+    where += " AND e.studentId = ?";
+    params.push(currentStudentUuid);
+  }
+
+  if (identity.role === "faculty") {
+    const faculty = await get(db, "SELECT id FROM faculty WHERE userId = ? OR id = ?", [identity.userId, identity.userId]);
+    if (!faculty) return res.status(403).json({ error: "Forbidden" });
+    where += " AND o.facultyId = ?";
+    params.push(faculty.id);
+  }
+
   if (studentUuid) {
+    if (identity.role === "student" && String(identity.studentId || identity.userId) !== String(studentIdStr)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     where += " AND e.studentId = ?";
     params.push(studentUuid);
   }
@@ -1453,9 +1487,9 @@ app.get("/api/enrollments", requireRole("admin", "registrar", "student"), async 
        a.code AS academicYear,
        sem.name AS semester,
        sec.name AS sectionName,
-      o.schedule,
-      o.room,
-      sub.units,
+       o.schedule,
+       o.room,
+       sub.units,
        u.firstName || ' ' || u.lastName AS facultyName
      FROM enrollments e
      JOIN students s ON s.id = e.studentId
@@ -1560,6 +1594,12 @@ app.get("/api/grades", async (req, res) => {
   let where = "1=1";
   const params = [];
   if (subjectOfferingId) {
+    if (identity.role === "faculty") {
+      const offering = await get(db, "SELECT facultyId FROM subjectOfferings WHERE id = ?", [subjectOfferingId]);
+      if (!offering || !(await facultyOwnsOffering(offering.facultyId, identity.userId))) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
     where += " AND g.subjectOfferingId = ?";
     params.push(subjectOfferingId);
   }
@@ -1725,18 +1765,40 @@ app.delete("/api/grades", requireRole("admin", "faculty"), async (req, res) => {
 app.get("/api/attendance", requireRole("admin", "faculty", "registrar", "student"), async (req, res) => {
   const subjectOfferingId = req.query.subjectOfferingId ? String(req.query.subjectOfferingId) : null;
   const date = req.query.date ? String(req.query.date) : null;
-  const studentId = req.query.studentId ? String(req.query.studentId) : null;
+  const requestedStudentId = req.query.studentId ? String(req.query.studentId) : null;
+  const identity = req.userContext;
 
-  if (!subjectOfferingId && !studentId) return sendError(res, 400, "subjectOfferingId or studentId is required");
+  if (identity.role === "student") {
+    const selfStudentId = identity.studentId || identity.userId;
+    if (!selfStudentId) return res.status(403).json({ error: "Forbidden" });
+    if (requestedStudentId && String(requestedStudentId) !== String(selfStudentId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+  }
+
+  if (!subjectOfferingId && !requestedStudentId && identity.role !== "student") {
+    return sendError(res, 400, "subjectOfferingId or studentId is required");
+  }
 
   let where = "1=1";
   const params = [];
   if (subjectOfferingId) {
+    if (identity.role === "faculty") {
+      const offering = await get(db, "SELECT facultyId FROM subjectOfferings WHERE id = ?", [subjectOfferingId]);
+      if (!offering || !(await facultyOwnsOffering(offering.facultyId, identity.userId))) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
     where += " AND a.subjectOfferingId = ?";
     params.push(subjectOfferingId);
   }
-  if (studentId) {
-    const uuid = await resolveStudentUuid(studentId);
+  if (identity.role === "student") {
+    const selfUuid = await resolveStudentUuid(identity.studentId || identity.userId);
+    if (!selfUuid) return res.status(403).json({ error: "Forbidden" });
+    where += " AND a.studentId = ?";
+    params.push(selfUuid);
+  } else if (requestedStudentId) {
+    const uuid = await resolveStudentUuid(requestedStudentId);
     if (!uuid) return res.status(404).json({ error: "Student not found" });
     where += " AND a.studentId = ?";
     params.push(uuid);
@@ -2091,7 +2153,8 @@ app.post("/api/students/:studentId/reenroll", async (req, res) => {
   };
 
   // Find or create a section for the target year/semester/program
-  const programId = await resolveProgramIdForStudent(student);
+  const programs = await all(db, "SELECT id, name FROM programs");
+  const programId = resolveProgramIdForStudent(current.program, programs);
   if (!programId) return res.status(400).json({ error: "Program not found" });
 
   const ay = await get(db, "SELECT id FROM academicYears WHERE code = ?", [target.academicYear]);

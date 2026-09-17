@@ -42,12 +42,12 @@ This repository contains the PIAT Academic Management System, a multi-platform a
 ## Backend and data seeding
 
 - The backend uses SQLite and stores data in `backend/bwest.db`.
-- Generated student records can be seeded using:
+- The relational system-test dataset can be seeded using:
   ```bash
-  cd backend
-  node seed-students.mjs
+   npm run seed:test
   ```
-- The seed script creates 900 student records and associated student user accounts.
+- This creates 200 marked student records, accounts, curriculum-backed offerings, enrollments, grades, attendance, notifications, and academic history. Use `npm run seed:test:reset` to regenerate it safely.
+- All mock student accounts use the password `PiatTest2026!`; the generated report is written to `MOCK_DATA_TEST_REPORT.md`.
 
 ## Notes
 

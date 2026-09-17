@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "seed:test": "node seed-test-data.mjs",
+    "seed:test:reset": "node seed-test-data.mjs --reset",
+    "audit:test": "node audit-test-data.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

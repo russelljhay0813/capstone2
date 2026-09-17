@@ -7,13 +7,12 @@
  * @returns {Object} Normalized student object ready for database insertion.
  */
 export function normalizeStudentPayload(input = {}) {
-  // Helper to safely convert to integer timestamp
   const toTimestamp = (value) => {
     if (value === undefined || value === null) return null;
-    if (typeof value === 'number') return value;
-    if (typeof value === 'string') {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
       const parsed = Date.parse(value);
-      return isNaN(parsed) ? null : parsed;
+      return Number.isNaN(parsed) ? null : parsed;
     }
     return null;
   };
@@ -73,7 +72,7 @@ export function normalizeStudentPayload(input = {}) {
 
 /**
  * Normalize a user payload to match the new `users` table schema.
- * Academic fields are removed; only user‑login related fields remain.
+ * Academic fields are removed; only user-login related fields remain.
  *
  * @param {Object} input - Raw user data.
  * @returns {Object} Normalized user object ready for database insertion.
@@ -81,10 +80,10 @@ export function normalizeStudentPayload(input = {}) {
 export function normalizeUserPayload(input = {}) {
   const toTimestamp = (value) => {
     if (value === undefined || value === null) return null;
-    if (typeof value === 'number') return value;
-    if (typeof value === 'string') {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
       const parsed = Date.parse(value);
-      return isNaN(parsed) ? null : parsed;
+      return Number.isNaN(parsed) ? null : parsed;
     }
     return null;
   };

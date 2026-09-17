@@ -78,20 +78,23 @@ function FacultyDashboard() {
 
   const loadFacultyData = useCallback(async () => {
     if (!user?.id) return;
-    try {
-      const [facultyOfferingsData, allEnrollments, allGrades, notificationData, announcementData] =
-        await Promise.all([
-          fetchSubjectOfferings({ facultyId: user.facultyId || user.id }),
-          fetchEnrollments(),
-          fetchGrades(),
-          fetchNotifications(user.id),
-          fetchAnnouncements(),
-        ]);
-      const facultyOnly = facultyOfferingsData;
-      const offeringIds = facultyOnly.map((o) => o.id);
-      setFacultyOfferings(facultyOnly);
-      setEnrollments(allEnrollments);
-      setRecentGrades(
+    const results = await Promise.allSettled([
+      fetchSubjectOfferings({ facultyId: user.facultyId || user.id }),
+      fetchEnrollments(),
+      fetchGrades(),
+      fetchNotifications(user.id),
+      fetchAnnouncements(),
+    ]);
+    const facultyOnly = results[0].status === "fulfilled" ? results[0].value : [];
+    const allEnrollments = results[1].status === "fulfilled" ? results[1].value : [];
+    const allGrades = results[2].status === "fulfilled" ? results[2].value : [];
+    const notificationData = results[3].status === "fulfilled" ? results[3].value : [];
+    const announcementData = results[4].status === "fulfilled" ? results[4].value : [];
+
+    const offeringIds = facultyOnly.map((o) => o.id);
+    setFacultyOfferings(facultyOnly);
+    setEnrollments(allEnrollments);
+    setRecentGrades(
         allGrades
           .filter((g) => offeringIds.includes(g.subjectOfferingId))
           .sort((a, b) => b.submittedAt - a.submittedAt)
@@ -106,47 +109,45 @@ function FacultyDashboard() {
             createdAt: g.submittedAt,
           })),
       );
-      setPendingGradesCount(
+    setPendingGradesCount(
         allGrades.filter((g) => offeringIds.includes(g.subjectOfferingId) && g.status === "draft")
           .length,
       );
-      setCompletedGradesCount(
+    setCompletedGradesCount(
         allGrades.filter(
           (g) =>
             offeringIds.includes(g.subjectOfferingId) &&
             (g.status === "submitted" || g.status === "finalized"),
         ).length,
       );
-      const now = new Date();
-      const currentMonth = now.getMonth();
-      const computedSemester = currentMonth >= 6 ? SEMESTERS[0] : SEMESTERS[1];
-      setCurrentSemester(user.semester || facultyOnly[0]?.semesterName || computedSemester);
-      setCurrentAcademicYear(user.academicYear || facultyOnly[0]?.academicYearCode || "—");
-      setNotifications(notificationData.slice(0, 5));
-      setRecentAnnouncements(
-        announcementData
-          .filter((a) => a.audience === "faculty" || a.audience === "all")
-          .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-          .slice(0, 3)
-          .map((a) => ({
-            id: a.id,
-            title: a.title,
-            body: a.body,
-            authorName: a.authorName || "PIAT",
-            createdAt: a.createdAt ?? Date.now(),
-          })),
-      );
-    } catch {
-      setFacultyOfferings([]);
-      setEnrollments([]);
-      setRecentGrades([]);
-      setPendingGradesCount(0);
-      setCompletedGradesCount(0);
-      setCurrentSemester("—");
-      setCurrentAcademicYear("—");
-      setNotifications([]);
-      setRecentAnnouncements([]);
-    }
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const computedSemester = currentMonth >= 6 ? SEMESTERS[0] : SEMESTERS[1];
+    const currentAcademicYearCode = `${now.getFullYear()}-${now.getFullYear() + 1}`;
+    const currentOffering = facultyOnly.find(
+      (offering) =>
+        offering.academicYearCode === currentAcademicYearCode &&
+        offering.semesterName === computedSemester,
+    );
+    const fallbackOffering = facultyOnly[0];
+    setCurrentSemester(user.semester || currentOffering?.semesterName || computedSemester);
+    setCurrentAcademicYear(
+      user.academicYear || currentOffering?.academicYearCode || fallbackOffering?.academicYearCode || "—",
+    );
+    setNotifications(notificationData.slice(0, 5));
+    setRecentAnnouncements(
+      announcementData
+        .filter((a) => a.audience === "faculty" || a.audience === "all")
+        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+        .slice(0, 3)
+        .map((a) => ({
+          id: a.id,
+          title: a.title,
+          body: a.body,
+          authorName: a.authorName || "PIAT",
+          createdAt: a.createdAt ?? Date.now(),
+        })),
+    );
   }, [user?.id, user?.semester, user?.academicYear]);
 
   useEffect(() => {

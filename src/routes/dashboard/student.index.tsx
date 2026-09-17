@@ -27,7 +27,6 @@ import {
   fetchGrades,
   fetchNotifications,
   fetchStudentById,
-  fetchSubjectOfferings,
   fetchEligibleReenrollments,
   reenrollStudent,
   type Announcement,
@@ -75,7 +74,7 @@ function StudentDashboard() {
   const navigate = useNavigate();
   const [studentProfile, setStudentProfile] = useState<StudentRegistration | null>(null);
   const [enrollments, setEnrollments] = useState<StudentEnrollment[]>([]);
-  const [offerings, setOfferings] = useState<any[]>([]); // subjectOfferings with subject details
+  const [offerings, setOfferings] = useState<any[]>([]);
   const [grades, setGrades] = useState<GradeEntry[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -88,12 +87,37 @@ function StudentDashboard() {
   const [expandedOfferingIds, setExpandedOfferingIds] = useState<string[]>([]);
   const [hasAttemptedProfileLoad, setHasAttemptedProfileLoad] = useState(false);
 
+  const fallbackOfferingMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    enrollments.forEach((entry) => {
+      map[entry.subjectOfferingId] = {
+        id: entry.subjectOfferingId,
+        subjectId: entry.subjectOfferingId,
+        subjectCode: entry.subjectCode,
+        subjectTitle: entry.subjectTitle,
+        units: entry.units,
+        academicYearCode: entry.academicYearCode ?? entry.academicYear,
+        semesterName: entry.semesterName ?? entry.semester,
+        yearLevel: entry.yearLevel,
+        sectionName: entry.sectionName,
+        programName: entry.programName,
+        facultyName: entry.facultyName,
+        schedule: entry.schedule,
+        room: entry.room,
+      };
+    });
+    return map;
+  }, [enrollments]);
+
   // Map offeringId → full offering object
   const offeringMap = useMemo(() => {
     const map: Record<string, any> = {};
+    Object.entries(fallbackOfferingMap).forEach(([key, value]) => {
+      map[key] = value;
+    });
     offerings.forEach((o) => { map[o.id] = o; });
     return map;
-  }, [offerings]);
+  }, [offerings, fallbackOfferingMap]);
 
   // Combined enrollments with offering details
   const enrichedEnrollments = useMemo(() => {
@@ -120,11 +144,10 @@ function StudentDashboard() {
     try {
       setLoading(true);
       const profile = await fetchStudentById(user.studentId);
-      const [enrollmentData, offeringData, gradeData, announcementData, notificationData] =
+      const [enrollmentData, gradeData, announcementData, notificationData] =
         await Promise.all([
-          fetchEnrollments(user.studentId),
-          fetchSubjectOfferings(),
-          fetchGrades(undefined, user.studentId),
+          fetchEnrollments({ studentId: user.studentId }),
+          fetchGrades({ studentId: user.studentId }),
           fetchAnnouncements(),
           fetchNotifications(user.studentId),
         ]);
@@ -132,7 +155,7 @@ function StudentDashboard() {
       setStudentProfile(profile);
       const persistedEnrollments = enrollmentData.filter((entry) => entry.status !== "dropped");
       setEnrollments(persistedEnrollments);
-      setOfferings(offeringData);
+      setOfferings([]);
       setGrades(gradeData);
       setAnnouncements(
         (announcementData || []).filter(
