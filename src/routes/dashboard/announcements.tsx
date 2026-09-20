@@ -22,8 +22,16 @@ import {
   type AnnouncementCategory,
   type AnnouncementAudience,
 } from "@/lib/announcements-store";
-import { fetchAnnouncements, createAnnouncement, deleteAnnouncementApi } from "@/lib/api";
+import { fetchAnnouncements, createAnnouncement, deleteAnnouncementApi, updateAnnouncement } from "@/lib/api";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/dashboard/announcements")({
   component: AnnouncementsPage,
@@ -82,6 +90,9 @@ export function AnnouncementsPage() {
   const [audience, setAudience] = useState<AnnouncementAudience>("all");
   const [pinned, setPinned] = useState(false);
   const [formError, setFormError] = useState("");
+  const [detail, setDetail] = useState<ApiAnnouncement | null>(null);
+  const [editing, setEditing] = useState<ApiAnnouncement | null>(null);
+  const [editForm, setEditForm] = useState({ title: "", body: "", category: "general" as AnnouncementCategory });
 
   const loadAnnouncements = async () => {
     try {
@@ -138,6 +149,7 @@ export function AnnouncementsPage() {
       await createAnnouncement({
         title: title.trim(),
         body: body.trim(),
+        category,
         audience: audience,
         authorName: user.name,
         authorRole: user.role,
@@ -162,6 +174,33 @@ export function AnnouncementsPage() {
       loadAnnouncements();
     } catch (err: any) {
       toast.error(err?.message || "We couldn’t remove that announcement right now.");
+    }
+  };
+
+  const openEdit = (announcement: ApiAnnouncement) => {
+    setEditing(announcement);
+    setEditForm({
+      title: announcement.title,
+      body: announcement.body,
+      category: (announcement.category as AnnouncementCategory) || "general",
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !editForm.title.trim() || !editForm.body.trim()) {
+      toast.error("Title and message are required.");
+      return;
+    }
+    try {
+      await updateAnnouncement(editing.id, {
+        ...editForm,
+        audience: editing.audience || "all",
+      });
+      setEditing(null);
+      toast.success("Announcement updated.");
+      loadAnnouncements();
+    } catch (err: any) {
+      toast.error(err?.message || "We couldn’t update that announcement right now.");
     }
   };
 
@@ -354,10 +393,50 @@ export function AnnouncementsPage() {
               canManage={canPost}
               onPin={() => handlePin(a.id, a.pinned === 1)}
               onRemove={() => handleRemove(a.id)}
+              onView={() => setDetail(a)}
+              onEdit={() => openEdit(a)}
             />
           ))}
         </div>
       )}
+
+      <Dialog open={detail !== null} onOpenChange={(open) => !open && setDetail(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{detail?.title}</DialogTitle>
+            <DialogDescription>
+              {detail ? CATEGORY_META[detail.category as AnnouncementCategory]?.label || detail.category : ""} announcement
+            </DialogDescription>
+          </DialogHeader>
+          <p className="whitespace-pre-wrap text-sm text-foreground/80">{detail?.body}</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetail(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Announcement</DialogTitle>
+            <DialogDescription>Update the announcement without exposing sensitive account data.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <input className="w-full rounded-lg border bg-background px-3 py-2 text-sm" aria-label="Edit announcement title" value={editForm.title} onChange={(event) => setEditForm({ ...editForm, title: event.target.value })} />
+            <textarea className="w-full rounded-lg border bg-background px-3 py-2 text-sm" aria-label="Edit announcement message" rows={4} value={editForm.body} onChange={(event) => setEditForm({ ...editForm, body: event.target.value })} />
+            <select className="w-full rounded-lg border bg-background px-3 py-2 text-sm" aria-label="Edit announcement category" value={editForm.category} onChange={(event) => setEditForm({ ...editForm, category: event.target.value as AnnouncementCategory })}>
+              <option value="general">General</option>
+              <option value="academic">Academic</option>
+              <option value="event">Event</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+            <Button onClick={saveEdit}>Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -368,12 +447,16 @@ function AnnouncementCard({
   canManage,
   onPin,
   onRemove,
+  onView,
+  onEdit,
 }: {
   a: ApiAnnouncement & { authorRole: string };
   index: number;
   canManage: boolean;
   onPin: () => void;
   onRemove: () => void;
+  onView: () => void;
+  onEdit: () => void;
 }) {
   const meta = CATEGORY_META[a.category as AnnouncementCategory] || CATEGORY_META.general;
   const Icon = meta.icon;
@@ -410,9 +493,7 @@ function AnnouncementCard({
                 </span>
               )}
             </div>
-            <h3 className="mt-1.5 font-heading text-base font-semibold text-card-foreground">
-              {a.title}
-            </h3>
+            <button className="mt-1.5 text-left font-heading text-base font-semibold text-card-foreground hover:underline" onClick={onView}>{a.title}</button>
             <p className="mt-1.5 whitespace-pre-wrap text-sm text-foreground/80">{a.body}</p>
             <p className="mt-3 text-[11px] text-muted-foreground">
               Posted by <span className="font-medium text-foreground">{a.authorName}</span>
@@ -424,6 +505,13 @@ function AnnouncementCard({
 
         {canManage && (
           <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onEdit}
+            >
+              Edit
+            </Button>
             <Button
               variant="ghost"
               size="icon"

@@ -2,9 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { StatCard } from "@/components/StatCard";
 import { Users, GraduationCap, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
-import { useUsers } from "@/lib/users-store";
-import { useStudents, type Student } from "@/lib/students-store";
-import { fetchSubjectOfferings } from "@/lib/api";
+import { fetchAdminDashboardStats, type AdminDashboardStats } from "@/lib/api";
 import { useState, useEffect } from "react";
 
 export const Route = createFileRoute("/dashboard/admin/")({
@@ -12,35 +10,16 @@ export const Route = createFileRoute("/dashboard/admin/")({
 });
 
 function AdminDashboard() {
-  const users = useUsers();
-  const students = useStudents();
-  const [offeringsCount, setOfferingsCount] = useState(0);
+  const [stats, setStats] = useState<AdminDashboardStats>({
+    totalStudents: 0,
+    activeFaculty: 0,
+    activeOfferings: 0,
+    pendingApplications: 0,
+  });
 
   useEffect(() => {
-    fetchSubjectOfferings()
-      .then((offerings) => setOfferingsCount(offerings.length))
-      .catch(() => setOfferingsCount(0));
+    fetchAdminDashboardStats().then(setStats).catch(() => undefined);
   }, []);
-
-  const totalStudents = students.filter(
-    (student: Student) =>
-      student.status === "approved" ||
-      student.status === "active"
-  ).length;
-
-  const totalFaculty = users.filter((user) => user.role === "faculty" && user.status === "active").length;
-
-  const pendingApplications = students.filter(
-    (student: Student) =>
-      student.status === "pending" ||
-      student.status === "submitted" ||
-      student.status === "under_review"
-  ).length;
-
-  const approvedStudents = students.filter(
-    (student: Student) =>
-      student.status === "approved"
-  ).length;
 
   return (
     <div className="space-y-6">
@@ -53,25 +32,25 @@ function AdminDashboard() {
         {[
           {
             title: "Total Students",
-            value: totalStudents,
+            value: stats.totalStudents,
             icon: GraduationCap,
             subtitle: "Registered",
           },
           {
             title: "Active Faculty",
-            value: totalFaculty,
+            value: stats.activeFaculty,
             icon: Users,
             subtitle: "Teaching staff",
           },
           {
             title: "Subject Offerings",
-            value: offeringsCount,
+            value: stats.activeOfferings,
             icon: BookOpen,
             subtitle: "Active courses",
           },
           {
             title: "Pending Applications",
-            value: pendingApplications,
+            value: stats.pendingApplications,
             icon: Users,
             subtitle: "Awaiting approval",
           },
@@ -94,11 +73,11 @@ function AdminDashboard() {
         <div className="mt-4 space-y-3">
           <div className="flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
             <span className="text-sm font-medium text-foreground">Pending Applications</span>
-            <span className="text-sm font-medium text-warning">{pendingApplications}</span>
+            <span className="text-sm font-medium text-warning">{stats.pendingApplications}</span>
           </div>
           <div className="flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
             <span className="text-sm font-medium text-foreground">Approved Students</span>
-            <span className="text-sm font-medium text-success">{approvedStudents}</span>
+            <span className="text-sm font-medium text-success">{stats.totalStudents}</span>
           </div>
         </div>
       </div>

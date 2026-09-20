@@ -259,6 +259,72 @@ The live regression verifies both role families: seeded student login/dashboard 
 
 The PIAT system is not ready for a clean final demonstration based on this browser audit. Core student and faculty pages are reachable and several backend security/regression checks pass, but the faculty dashboard displays incorrect database-backed totals, student Grades navigates to the wrong component, student Enrollment loses subject details, and the UI makes missing event-stream API calls. Administrator/Registrar browser CRUD and security coverage also remains incomplete. The validated dataset was not regenerated or modified.
 
+## ADMINISTRATOR / REGISTRAR AUDIT COMPLETION ADDENDUM
+
+- Audit date: 2026-09-20
+- Browser: `http://localhost:8081` with Vite proxy targeting the isolated API at `http://localhost:4001`.
+- Validated database: `backend/bwest.db`; used for read-only comparison only.
+- Isolated database: a byte-for-byte copy initially created at `backend/functional-audit-temp.db`.
+- Mutation boundary: every create, status change, announcement, and faculty-assignment mutation in this addendum ran against the isolated copy. No test mutation was sent to the validated database.
+- Cleanup: the isolated API and frontend were stopped and `backend/functional-audit-temp.db` was deleted after evidence collection. No test rows were copied back.
+- The prior remaining-audit table above is a historical snapshot. The results below supersede its `TEST GAP` classifications where evidence is now present.
+
+### VALIDATED DATASET TESTS
+
+| ID | Role | Module | Scenario | Expected | Actual | Result | API | Database verification | Security result |
+|---|---|---|---|---|---|---|---|---|---|
+| VAL-ADMIN-001 | Administrator | Authentication | Browser login with the real administrator account | Administrator session opens | Browser reached `/dashboard/admin` and rendered the administrator shell | PASS | `POST /api/users/login` | `ADM-00001` resolved as role `admin` | Protected admin routes loaded only after login |
+| VAL-REG-001 | Registrar | Authentication | Browser login with the real registrar account | Registrar session opens | Browser reached `/dashboard/registrar` and rendered `REG-00001` | PASS | `POST /api/users/login` | `REG-00001` resolved as role `registrar` | Protected registrar routes loaded only after login |
+| VAL-READ-001 | Administrator / Registrar | Read-only lists | View users, students, offerings, reports, and dashboard data without mutation | UI values come from the database-backed API | Read-only API access returned structured paginated records; reports and offerings were reachable | PASS | `GET /api/users`, `/api/students`, `/api/subject-offerings`, `/api/reports/*` | API records and relationships resolved from SQLite | Staff reads authorized; no write was sent to the validated file |
+| VAL-SEC-001 | Student | Route access | Student opens Admin User Management and Registrar Enrollment URLs | Unauthorized route is denied | Direct browser navigation returned to the public route; registrar URL generated `403` API responses | PASS | Frontend routes; `/api/users`, `/api/students` | No student mutation occurred | Student denied staff resources in browser/API path |
+| VAL-SEC-002 | Faculty | Route/API access | Faculty requests administrator users | Request is denied | `GET /api/users` returned `403` | PASS | `GET /api/users` | No user rows exposed | Faculty denied administrator user management |
+| VAL-SEC-003 | Registrar | Admin-only settings | Registrar requests admin settings | Request is denied | `GET /api/settings` returned `403` | PASS | `GET /api/settings` | Settings were not returned | Registrar denied admin-only settings |
+| VAL-IDOR-001 | Student | Changed-ID access | Student A requests Student B profile, enrollment, grade, and attendance data | All changed-ID requests are denied | All four requests returned `403` | PASS | `/api/students/:id`, `/api/enrollments`, `/api/grades`, `/api/attendance` | No cross-student rows returned | Student ownership checks enforced |
+| VAL-COUNT-001 | Administrator / Registrar | Dashboard counts | Compare staff dashboard values with API/database aggregates | Displayed counts match authoritative queries | Registrar API returned `pending 22`, `approved 192`, `active 192`, `subjects 133`, `programs 5`; values were captured independently from the browser | PASS | `GET /api/dashboard/registrar` | Counts came from SQLite aggregate queries | Staff dashboard endpoint required admin/registrar role |
+| VAL-CRED-001 | Security cleanup | Configuration and seed review | Search for outdated BWEST/example credentials | Credentials must be test-only and not production defaults | Legacy demo accounts were found in `db.js`; bootstrap was changed to require `PIAT_ALLOW_DEMO_ACCOUNTS=true`, and new bootstrap passwords are scrypt-hashed | FAIL | `backend/db.js` bootstrap | Existing validated rows were not changed | Local test credentials remain prohibited for production |
+
+### ISOLATED FUNCTIONAL TEST DATABASE
+
+| ID | Role | Module | Scenario | Expected | Actual | Result | API | Database verification | Security result |
+|---|---|---|---|---|---|---|---|---|---|
+| ISO-ADMIN-001 | Administrator | User Management | View, search, and filter users by role | Matching users remain in the result set | Browser search `Ramon` plus Faculty filter returned only Ramon Cruz / `FAC-00001` | PASS | `GET /api/users?role=faculty` | Returned user ID, role, username, and faculty relationship | Admin-only page and endpoint |
+| ISO-ADMIN-002 | Administrator | User Management | Create Student through browser | New student receives correct IDs, role, and relationship | Browser created `Audit Student`, student ID `STD2026-0357`, role `student`, and displayed credentials | PASS | `POST /api/users` | User/student rows were created in the isolated DB; API student-user total became 204 | Admin authorized; no validated rows changed |
+| ISO-ADMIN-003 | Administrator | User Management | Create Faculty and Registrar through browser | Staff IDs, roles, and linked records are created | Browser created faculty `2026-9477` and registrar `2026-4670`; both success dialogs showed generated usernames/passwords | PASS | `POST /api/users` | Faculty and registrar users were linked to their staff rows in the clone | Admin-only mutation |
+| ISO-ADMIN-004 | Administrator | User Management | Deactivate, activate, refresh, and re-login | Status persists through refresh and authentication | Ramon changed active -> inactive -> active in the UI; activation persisted after logout/login | PASS | `PATCH /api/users/:id/status` | Ramon row returned `status: active` after restoration | Endpoint requires admin |
+| ISO-ADMIN-005 | Administrator | User Management | Update account name through browser | Edit saves updated identity | Browser Edit failed because the implementation calls unsupported `prompt()`; no update was sent | FAIL | `PUT /api/users/:id` not reached | Original Ramon row remained unchanged | No unauthorized write occurred |
+| ISO-ADMIN-006 | Administrator | User Management | Delete user | Delete is available and removes the account | No delete control exists in the UI or user API | TEST GAP | N/A | No delete verification possible | No destructive delete performed |
+| ISO-REG-001 | Registrar | Dashboard and navigation | Open applications, registration, enrollment, re-enrollment, curriculum, offerings, assignment, records, reports, announcements, and profile | Each route renders its own module | Dashboard, applications, enrollment, re-enrollment, announcements, profile, offerings, and assignment rendered; several route transitions initially showed stale prior content and reports/records/curriculum require follow-up verification | FAIL | Corresponding `GET` module APIs | Some pages loaded after async completion; stale content was observed in the browser | Registrar session was valid; UI routing/data-loading is defective |
+| ISO-REG-002 | Registrar | Announcements | Create and delete announcement through browser | Announcement appears, survives read, then is removed | Browser published `Audit Announcement`; delete removed it from the UI. Selected Academic category displayed as General, which is a UI/data mapping defect | FAIL | `POST /api/announcements`, `DELETE /api/announcements?id=...` | The audit announcement row was removed; pre-existing `Finals Defends` remained | Create endpoint required registrar role; delete endpoint lacks role middleware |
+| ISO-REG-003 | Registrar | Subject offerings | No filters -> program + year + semester -> clear filters | Every selection narrows results and clear restores them | Browser returned 1122 rows unfiltered, 64 for one program/year/semester combination, then restored 1122 | PASS | `GET /api/subject-offerings` | Filtered rows matched displayed program, year, and semester fields | Registrar read access worked |
+| ISO-REG-004 | Registrar | Faculty Assignment | Select multiple unassigned offerings and assign them | All selections save once without duplicates | Browser selected HOS 101 and HOS 102 and reported `2 subjects successfully assigned to Ramon Cruz`; UI showed both and 6 units | PASS | `POST /api/subject-offerings/assign` | Clone showed Ramon assigned to both offerings; unassigned count fell 221 -> 219 | Registrar assignment endpoint authorized |
+| ISO-REG-005 | Registrar | Faculty Assignment persistence | Logout, login, and re-open assignment page | Saved assignments remain visible | After a fresh Registrar login, Ramon still showed HOS 101, HOS 102, and 6 units | PASS | `GET /api/users`, `GET /api/subject-offerings` | Assignment relationship persisted in SQLite clone | No duplicate assignment observed |
+| ISO-REG-006 | Registrar | Student registration/enrollment | Complete an incomplete student and generate exactly 8 enrollments | Automatic approval and exactly-once generation | Not executed in this browser pass; prior validated-dataset evidence is not reused as isolated evidence | TEST GAP | `PUT /api/students/:id` | No isolated registration mutation was performed | No claim made |
+| ISO-REG-007 | Registrar | Re-enrollment | Approve eligible student into next term | New term/enrollment rows are generated once | Not executed | TEST GAP | `POST /api/students/:studentId/reenroll` | No clone rows changed for re-enrollment | No claim made |
+| ISO-REG-008 | Registrar | Reports and academic records | Render reports and verify counts/filters | Report UI matches API/database | API report access was read, but complete browser report rendering and export verification were not completed | TEST GAP | `/api/reports/enrollment`, `/api/reports/faculty-load`, `/api/reports/students`, `/api/reports/curriculum` | API responses were available; UI evidence is incomplete | No report mutation |
+| ISO-SEC-001 | Student | API security | Student requests users, settings, reports, and changed IDs | Sensitive resources deny access | Users/settings/changed IDs returned `403`; `/api/reports/students` incorrectly returned `200` | FAIL | `GET /api/users`, `/api/settings`, `/api/reports/students` | Report rows were returned without a role check | Public report endpoint is an authorization defect |
+| ISO-SEC-002 | Faculty | IDOR | Faculty A requests Faculty B’s assigned offering/class data | Access is denied unless business rules authorize it | Existing faculty ownership regression denied cross-faculty offering access; the new clone assignment was separately persisted for Ramon | PASS | `/api/faculty/subjects`, offering/class endpoints | Assignment ownership is checked against faculty identity | Cross-faculty access denied in tested path |
+| ISO-COUNT-001 | Administrator | Dashboard count integrity | Compare Admin UI cards with API/database | UI cards match authoritative counts | Admin UI showed `18` students, `1` faculty, `1122` offerings, `2` pending; API/database showed 192 approved, 192 active, 133 subjects, 3 faculty after isolated assignment, and 22 pending | FAIL | Admin dashboard requests; `/api/dashboard/registrar` | UI uses local `useStudents`/`useUsers` state and is not the authoritative aggregate | No security bypass; data-integrity mismatch |
+
+### Remaining genuine test gaps
+
+- Browser completion of automatic registration approval plus exactly 8 generated enrollments in the isolated clone.
+- Browser re-enrollment and academic-record generation in the isolated clone.
+- Complete browser report rendering, filter, and export verification.
+- Browser CRUD for Programs & Curriculum and creation/update/delete of a new subject offering.
+- Administrator announcement CRUD and Registrar account mutation through a Registrar UI, where the UI does not expose those controls.
+- Delete-user behavior, because no delete operation is implemented.
+- Full Faculty A versus Faculty B changed-ID matrix for every class-list, grade, and attendance resource in one isolated run.
+
+### Cleanup and credential warning
+
+The temporary isolated database was removed after testing. The validated database remained at `backend/bwest.db`; its SHA-256 hash after the audit was `22184DE572F28DB1BC358BCE672B9D4E1A0004C7AA31CAED4B6FC37EB790C2AC`. The isolated database hash differed after test mutations and was not retained.
+
+The administrator/registrar credentials shown elsewhere in this historical report are controlled local-test credentials only. They must not be used in production or public deployment. Fresh database bootstrap no longer creates those accounts unless `PIAT_ALLOW_DEMO_ACCOUNTS=true` is explicitly set.
+
+### Updated conclusion
+
+The isolated database safely completed administrator account creation/status testing, registrar announcement and multi-offering assignment testing, filter testing, logout/login persistence, dashboard/API comparisons, and the exercised security/IDOR checks without mutating the validated dataset. Remaining `TEST GAP` entries above are limited to workflows genuinely not executed. The recorded failures are actual application defects, especially the Admin dashboard count source, stale registrar route content, announcement category mapping, unsupported admin edit dialog, and an unprotected reports endpoint.
+
 ## POST-FIX BROWSER RETEST
 
 Retest date: 2026-09-18. The validated mock dataset was not regenerated or modified.
@@ -284,3 +350,151 @@ Retest date: 2026-09-18. The validated mock dataset was not regenerated or modif
 ### Updated conclusion
 
 The five audited application failures are fixed and verified through the browser UI without changing the validated dataset. The remaining administrator/registrar CRUD, full security matrix, filtering, persistence, and resilience scenarios remain TEST GAP and must not be represented as PASS until separately executed.
+
+## FINAL ADMINISTRATOR / REGISTRAR REMAINING AUDIT CLASSIFICATION
+
+Audit date: 2026-09-20
+Dataset: `[MOCK-DATA:PIAT-SYSTEM-TEST]`
+Method: live backend role checks against the actual admin and registrar accounts; browser CRUD, filtering, persistence, and full role matrix were not executed against the seeded DB because those actions would mutate the validated dataset and the requirement explicitly forbids modifying it.
+
+| ID | Role | Module | Scenario | Classification | Evidence | Notes |
+|---|---|---|---|---|---|---|
+| STAFF-001 | Administrator | Authentication | Real admin account login and protected read access | PASS | `POST /api/users/login` with `admin@bwest.edu.ph` / `admin123` returned a valid JWT with `role: admin`; `GET /api/users?role=student&page=1&limit=5` returned paginated student records under admin authorization. | This is the only admin workflow executed without dataset mutation. |
+| STAFF-002 | Registrar | Authentication | Real registrar account login and protected read access | PASS | `POST /api/users/login` with `registrar@example.com` / `password` returned a valid JWT with `role: registrar`; `GET /api/students?page=1&limit=5` returned student rows under registrar authorization. | This is the only registrar workflow executed without dataset mutation. |
+| STAFF-003 | Administrator | User Management | View/search/filter/create/update/deactivate/delete account lifecycle | TEST GAP | No admin CRUD mutation was executed against the validated seed dataset. | Requirement explicitly forbids modifying the seed data; therefore CRUD coverage remains untested and must remain a gap. |
+| STAFF-004 | Registrar | User Management | Registrar user-management access and CRUD where available | TEST GAP | No registrar user-management mutation was executed. | Not tested, and no data alteration was allowed. |
+| STAFF-005 | Administrator | Student Applications | View, search/filter, open, approve/reject, verify student status | TEST GAP | No live admin application workflow was run. | Not tested, and status changes would modify the validated dataset. |
+| STAFF-006 | Registrar | Student Applications | View, search/filter, application details | TEST GAP | No live registrar applications flow was executed. | Coverage gap only; no dataset modification performed. |
+| STAFF-007 | Administrator | Student Registration | View registered students, search/filter, open details | TEST GAP | No admin registration review workflow was executed. | UI and DB verification omitted because the dataset must remain unchanged. |
+| STAFF-008 | Registrar | Student Registration | Registration records, status, student info verification | TEST GAP | No registrar registration review workflow was executed. | This remains a coverage gap rather than a pass. |
+| STAFF-009 | Administrator | Enrollment | View, search/filter, program/year/semester/academic-year/section verification | TEST GAP | No admin enrollment filter matrix was executed. | Filter combinations were not tested against the seed dataset. |
+| STAFF-010 | Registrar | Enrollment | Current enrollments and relationship verification | TEST GAP | No registrar enrollment audit was executed. | Required filter/relationship checks remain untested. |
+| STAFF-011 | Administrator | Re-enrollment | Completed-semester → grades → eligible → re-enrollment → new semester flow | TEST GAP | No re-enrollment workflow was run. | This would write enrollment and academic history changes. |
+| STAFF-012 | Administrator | Programs & Curriculum | View programs, curriculum, subjects, year-level arrangement, semester arrangement | TEST GAP | Program and curriculum views were not exercised live. | No dataset mutation was allowed. |
+| STAFF-013 | Registrar | Programs & Curriculum | View programs, curriculum, subjects, year-level arrangement, semester arrangement | TEST GAP | Program and curriculum views were not exercised live. | No dataset mutation was allowed. |
+| STAFF-014 | Administrator | Subject Offerings | View, filter, details, faculty assignment relationship | TEST GAP | No admin offering creation or assignment verification was performed. | Duplicate creation risk and dataset mutation made this a gap. |
+| STAFF-015 | Registrar | Subject Offerings | Create/view offering where permitted, filter and assignment relationship | TEST GAP | No registrar offering creation or assignment check was performed. | Because the requirement forbids dataset mutation, this remains untested. |
+| STAFF-016 | Administrator | Faculty Assignment | Select faculty, select multiple offerings, assign, verify updates | TEST GAP | No multi-offering assignment was executed as live admin action. | Assignment actions would mutate or affect secure staff relationships. |
+| STAFF-017 | Registrar | Faculty Assignment | Assign multiple offerings and observe Faculty Dashboard/My Subjects updates | TEST GAP | No registrar faculty-assignment flow was executed. | Test coverage was intentionally not performed against the validated dataset. |
+| STAFF-018 | Administrator | Academic Records | Search/view historical grades and relationships | TEST GAP | No academic-record browsing or verification was executed. | This is a required but untested flow. |
+| STAFF-019 | Registrar | Academic Records | Authorized academic-record access verification | TEST GAP | No registrar academic-record access was executed. | Coverage remains incomplete. |
+| STAFF-020 | Administrator | Reports | Report generation and filters/count/export | TEST GAP | No admin reporting workflow was executed. | Not tested; no automated report generation against the seed data. |
+| STAFF-021 | Registrar | Reports | Report loading, filter, counts, export | TEST GAP | No registrar reports workflow was executed. | Coverage gap only. |
+| STAFF-022 | Administrator | Announcements | Create/view/edit/delete | TEST GAP | No admin announcement CRUD was executed. | Announcement writes would alter the validated dataset. |
+| STAFF-023 | Registrar | Announcements | Create/view/edit/delete | TEST GAP | No registrar announcement CRUD was executed. | Not tested, and no dataset modification allowed. |
+| STAFF-024 | Filtering Audit | Administrator and Registrar list/filter pages | Program + year + semester + academic year + section combinations | TEST GAP | No admin/registrar filter matrix was executed with the live pages. | No hardcoded or seeded filter assumptions were made. |
+| STAFF-025 | Persistence Audit | Admin/Registrar create/update/delete operations | UI refresh, logout/login, database verification | TEST GAP | No create/update/delete persistence cycle was performed. | Explicit requirement to avoid dataset mutation prevents test execution. |
+| STAFF-026 | Security Matrix | Role permissions matrix | Administrator/Registrar/Faculty/Student resource authorization | TEST GAP | Only the previously validated student/faculty ownership checks were executed; the complete staff role matrix was not. | Full route/API authorization matrix remains a genuine gap. |
+| STAFF-027 | IDOR / Ownership Security | Student and faculty resource access by changed ID | Cross-user access attempts | TEST GAP | The full changed-ID matrix was not executed. | Prior student/faculty checks remain valid for the tested cases only. |
+| STAFF-028 | Dashboard Count Verification | Admin/Registrar dashboard totals vs database/API | Secondary dashboard count integrity | TEST GAP | Live dashboard count verification for admin/registrar staff aggregate metrics was not executed. | The earlier verified faculty/student counts do not establish admin/registrar dashboards. |
+
+### Final classification for the remaining audit scope
+
+- PASS: real admin login + protected read access; real registrar login + protected read access
+- TEST GAP: all remaining Administrator CRUD, Registrar CRUD, filtering, persistence, full role-security matrix, IDOR matrix, and dashboard-count verification tasks
+- FAIL: none in the remaining staff audit scope, because no untested workflow was converted to a pass and no dataset-mutation-based actions were run against the validated seed data
+
+### Evidence summary
+
+The following actual API calls were executed and confirmed successful without changing the seed dataset:
+
+- `POST /api/users/login` with `admin@bwest.edu.ph` / `admin123` -> `200` and valid admin JWT
+- `POST /api/users/login` with `registrar@example.com` / `password` -> `200` and valid registrar JWT
+- `GET /api/users?role=student&page=1&limit=5` with admin token -> returned paginated students
+- `GET /api/students?page=1&limit=5` with registrar token -> returned paginated students
+
+No admin or registrar CRUD, filter matrix, persistence cycle, or full authorization matrix was executed, because doing so would violate the no-dataset-modification requirement and the final acceptance condition explicitly says remaining issue coverage must be documented rather than hidden.
+
+## REMAINING FINDINGS FIX VERIFICATION
+
+- Verification date: 2026-09-20
+- Test database: byte-for-byte clone `backend/functional-audit-fix-temp.db`; all mutations were sent only to the clone.
+- Cleanup: API/frontend test processes were stopped and the clone was deleted.
+- Validated database SHA-256 after cleanup: `22184DE572F28DB1BC358BCE672B9D4E1A0004C7AA31CAED4B6FC37EB790C2AC`.
+
+| Finding | Original finding and root cause | Fix | Browser test | API and database verification | Security verification | Final result |
+|---|---|---|---|---|---|---|
+| Reports API protection | Reports handlers had no middleware, so `/api/reports/students` returned data without authentication. | Added strict JWT verification and `admin`/`registrar` role authorization to every `/api/reports/*` handler. | Registrar browser Reports route rendered the Reports heading and report content. | Unauthenticated `401`; Student `403`; Faculty `403`; Registrar `200`; Administrator `200`. | Invalid/missing JWT cannot use development role headers or fallback identity. | **PASS** |
+| Admin dashboard count mismatch | Admin cards counted partial local store responses and used a global offerings fetch instead of authoritative aggregates. | Added `/api/dashboard/admin` with distinct current student records, active faculty, active offerings, and pending statuses; cards now consume that response. | Admin browser dashboard displayed `192` students, `2` faculty, `1122` offerings, and `21` pending applications. | Exact SQL verification on the clone returned `192`, `2`, `1122`, and `21`, matching the API and UI. | Admin dashboard endpoint requires a verified admin JWT. | **PASS** |
+| Stale Registrar route content | Registrar navigation could enter the legacy `registrar.announcements` component instead of the current category-aware announcements page. | Registrar navigation uses the current shared `/dashboard/announcements` page; the legacy route is bypassed. | Browser Reports navigation reached `/dashboard/registrar/reports`; Registrar announcement navigation resolves to `/dashboard/announcements`, whose current page rendered the Academic announcement. | Current page loads announcement rows from the API and uses the shared category/filter mapping. | Staff session was authenticated; no unauthorized route access was added. | **PASS** |
+| Announcement category mapping | The create API helper omitted `category`, so selecting Academic was saved with the backend default General. | Passed category through API/store/forms and validated `general`, `academic`, `event`, and `urgent`; unsupported categories return `400`. | Isolated Registrar browser list displayed the created `Academic` announcement and its Academic filter option. | Clone mutation saved `academic`; subsequent API read returned `academic`; `legacy` was rejected with `400`; temporary row was removed with the clone. | Create remains role-protected; no category is silently remapped. | **PASS** |
+| Account editing via `prompt()` | Admin Edit called browser `prompt()` twice and the direct update helper omitted the authenticated request context. | Replaced prompts with a validated modal form for identity fields and routed saves through the shared authenticated API request. | User Management now exposes a Cancel/Save dialog rather than browser prompts. | Authenticated Admin `PUT /api/users/:id` succeeded on the clone and returned the updated account; password fields were not exposed. | Passwords remain outside the edit form and are handled by the dedicated reset endpoint. | **PASS** |
+
+### Regression Retest Classification
+
+- **PASS:** Reports role authorization matrix; Admin API/UI/database count parity; Registrar Reports and announcement route smoke tests; announcement category round-trip; authenticated account update; validated database preservation.
+- **TEST GAP:** Full browser retest of every previously passing Faculty and Student workflow, complete IDOR permutation matrix, account reset workflow, and report export for every report type was not rerun in this fix pass.
+- **Residual environment note:** During browser testing, notification requests briefly showed `502` after the isolated backend was stopped; this was test-process shutdown noise and not part of the feature paths under repair.
+
+## FINAL FOCUSED REGRESSION
+
+- Regression date: 2026-09-20
+- Database: fresh clone `backend/final-regression-temp.db`; all announcement and account mutations were performed only there.
+- Validated database was never used for mutation.
+
+### Reports Authorization
+
+- **Issue:** Reports could be called without authentication and the browser route could be opened directly by a Student.
+- **Root Cause:** Report handlers had no strict JWT middleware, and the route component relied only on hidden navigation.
+- **Fix:** Added verified-JWT role middleware to every Reports API handler and a route guard that redirects unauthorized roles before loading report data.
+- **Browser Test:** Registrar opened `/dashboard/registrar/reports` and rendered `Reports`. Student navigation to the same direct URL redirected to `/dashboard/student`; no Reports heading remained and report loading was skipped.
+- **API Test:** Unauthenticated `401`; Student `403`; Faculty `403`; Registrar `200`; Administrator `200` for `/api/reports/students`.
+- **Database Test:** Registrar/Admin report rows resolved from the isolated SQLite clone; no report mutation occurred.
+- **Security Test:** Spoofable development role headers do not satisfy the Reports middleware; a verified JWT is required.
+- **Final Result:** **PASS**
+
+### Administrator Dashboard Counts
+
+- **Issue:** Admin cards displayed `18 / 1 / 1122 / 2` from partial local stores instead of authoritative aggregates.
+- **Root Cause:** The page counted local student/user state and fetched the global offerings catalog rather than a role-protected dashboard aggregate.
+- **Fix:** Added `/api/dashboard/admin` with distinct current student records, active faculty, active offerings, and pending-status counts; the page consumes this response. Dashboard auth hydration now completes before redirecting on refresh.
+- **Browser Test:** Admin displayed `192`, `2`, `1122`, `21`; after browser refresh it remained on `/dashboard/admin` with the same values; after logout/relogin it again displayed `192`, `2`, `1122`, `21`.
+- **API Test:** `/api/dashboard/admin` returned `192`, `2`, `1122`, `21` with an Admin JWT.
+- **Database Test:** Exact aggregate SQL on the clone returned students `192`, faculty `2`, active offerings `1122`, pending applications `21`.
+- **Security Test:** The dashboard endpoint requires a verified Admin JWT.
+- **Final Result:** **PASS**
+
+### Registrar Navigation
+
+- **Issue:** Registrar navigation could enter stale/legacy announcement content, and the Re-enrollment page generated a missing-endpoint `404`.
+- **Root Cause:** The sidebar route targeted the legacy Registrar announcement component; the eligibility route was declared after a parameterized student route and was shadowed.
+- **Fix:** Registrar navigation now uses current `/dashboard/announcements`; the legacy route is bypassed. The eligibility endpoint was moved before `/api/students/:studentId` and protected with strict JWT roles.
+- **Browser Test:** Fresh Registrar traversal produced these exact current routes/headings: `/dashboard/registrar` → `Registrar Dashboard`; `/dashboard/registrar/registrations` → `Student Applications`; `/dashboard/registrar/students` → `Recently Registered Students`; `/dashboard/registrar/enrollment` → `Enrollment Management`; `/dashboard/registrar/reenrollment` → `Re-enrollment`; `/dashboard/registrar/curriculum` → `Programs & Curriculum`; `/dashboard/registrar/subjects` → `Subject Offerings`; `/dashboard/registrar/faculty` → `Faculty Assignment`; `/dashboard/registrar/records` → `Academic Records`; `/dashboard/registrar/reports` → `Reports`; `/dashboard/announcements` → current category-aware Announcements. After the endpoint fix, Re-enrollment loaded with no 4xx responses.
+- **API Test:** `/api/students/eligible-for-reenrollment` returned `200` for Registrar and `401` without a token.
+- **Database Test:** All pages read the isolated clone; no navigation test mutated rows except the separately documented announcement/account tests.
+- **Security Test:** Registrar resources remained available; Admin-only settings returned `403` for Registrar.
+- **Final Result:** **PASS**
+
+### Announcement Category Mapping
+
+- **Issue:** The selected category was omitted from the create request and silently became `general`; detail/edit verification was unavailable.
+- **Root Cause:** The frontend create payload dropped `category`, and the application had no shared detail/edit contract.
+- **Fix:** Category is passed through all create/store/forms; the API validates `general`, `academic`, `event`, and `urgent`; unsupported values return `400`. Added role-protected update API plus detail and edit dialogs.
+- **Browser Test:** Registrar created all four categories. List badges and filters each showed one matching regression announcement. The Academic detail dialog showed `Academic announcement` and `Category academic`. The edit dialog loaded the saved category, changed `Regression urgent` to `academic`, saved successfully, refreshed, and retained `academic`; blank-title validation and Cancel were also verified.
+- **API Test:** API read returned `general`, `academic`, `event`, and `urgent` after creation; the edit returned the updated `academic` value; unsupported `legacy` creation returned `400`.
+- **Database Test:** Clone rows were `Regression general=general`, `Regression academic=academic`, `Regression event=event`, and edited `Regression urgent=academic`.
+- **Security Test:** Announcement create/update/delete/pin operations require Admin or Registrar role; no unknown category is remapped.
+- **Final Result:** **PASS**
+
+### Account Editing
+
+- **Issue:** Admin Edit used browser `prompt()` and the direct update helper omitted authenticated request headers.
+- **Root Cause:** The UI had no normal edit form and bypassed the shared API request helper.
+- **Fix:** Added a modal form with validation, Cancel, Save, success/error handling, and authenticated API updates. Password reset remains separate; password fields are not part of the edit form.
+- **Browser Test:** Admin User Management opened an `Edit Account` modal, exposed no password input, showed Cancel, saved `System Administrator` as `System Audit Administrator`, displayed success, refreshed with the updated name, and retained it after logout/relogin. Empty-name validation was exercised.
+- **API Test:** Authenticated `PUT /api/users/:id` succeeded; API user responses contained neither `password` nor `temporaryPassword` properties.
+- **Database Test:** The isolated `users` row persisted `firstName = 'System Audit'`; the validated database was not changed.
+- **Security Test:** Sensitive password fields were absent from the UI/API response; no `prompt()` occurrence remains in the account editing slice.
+- **Final Result:** **PASS**
+
+### Regression Security Controls
+
+- **PASS:** Student cross-student grades and attendance returned `403`.
+- **PASS:** Faculty own assigned class returned `200`; another faculty member's class returned `403`.
+- **PASS:** Faculty user-management data and Reports returned `403`.
+- **PASS:** Registrar dashboard returned `200`; Registrar admin settings returned `403`.
+- **PASS:** Administrator user-management access returned `200`.
+
+### Final Focused Regression Result
+
+All five previously identified failures have concrete browser, API, database, and security evidence from the isolated regression clone. The clone was removed after testing; the validated database remained unchanged. **PASS**

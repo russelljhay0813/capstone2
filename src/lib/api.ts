@@ -823,12 +823,23 @@ export async function fetchAnnouncements(): Promise<Announcement[]> {
 export async function createAnnouncement(announcement: {
   title: string;
   body: string;
+  category: string;
   audience: string;
   authorName: string;
   authorRole: string;
 }): Promise<any> {
   return request<any>("/api/announcements", {
     method: "POST",
+    body: JSON.stringify(announcement),
+  });
+}
+
+export async function updateAnnouncement(
+  id: string,
+  announcement: { title: string; body: string; category: string; audience: string },
+): Promise<Announcement> {
+  return request<Announcement>(`/api/announcements/${encodeURIComponent(id)}`, {
+    method: "PUT",
     body: JSON.stringify(announcement),
   });
 }
@@ -873,6 +884,27 @@ export interface RegistrarDashboardStats {
 
 export async function fetchRegistrarDashboardStats(): Promise<RegistrarDashboardStats> {
   return request<RegistrarDashboardStats>("/api/dashboard/registrar");
+}
+
+export interface AdminDashboardStats {
+  totalStudents: number;
+  activeFaculty: number;
+  activeOfferings: number;
+  pendingApplications: number;
+}
+
+export async function fetchAdminDashboardStats(): Promise<AdminDashboardStats> {
+  return request<AdminDashboardStats>("/api/dashboard/admin");
+}
+
+export async function updateUserApi(
+  id: string,
+  patch: { firstName: string; middleName?: string | null; lastName: string; email: string },
+): Promise<UserAccount> {
+  return request<UserAccount>(`/api/users/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
 }
 
 // ---------- REPORTS ----------

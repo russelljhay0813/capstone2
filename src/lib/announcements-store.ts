@@ -63,6 +63,7 @@ export function useAnnouncements() {
       await createAnnouncement({
         title: a.title,
         body: a.body,
+        category: a.category,
         audience: a.audience,
         authorName: a.authorName,
         authorRole: a.authorRole,

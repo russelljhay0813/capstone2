@@ -10,16 +10,16 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function DashboardLayout() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isHydrated } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (isHydrated && !isAuthenticated) {
       navigate({ to: "/" });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, isHydrated, navigate]);
 
-  if (!isAuthenticated) return null;
+  if (!isHydrated || !isAuthenticated) return null;
 
   return (
     <SidebarProvider>

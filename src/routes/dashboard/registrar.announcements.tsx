@@ -28,6 +28,7 @@ export const Route = createFileRoute("/dashboard/registrar/announcements")({
 });
 
 type Audience = "all" | "student" | "faculty";
+type AnnouncementCategory = "general" | "academic" | "event" | "urgent";
 
 function RegistrarAnnouncements() {
   const [announcements, setAnnouncements] = useState<any[]>([]);
@@ -35,6 +36,7 @@ function RegistrarAnnouncements() {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [audience, setAudience] = useState<Audience>("all");
+  const [category, setCategory] = useState<AnnouncementCategory>("general");
 
   const loadAnnouncements = async () => {
     try {
@@ -55,6 +57,7 @@ function RegistrarAnnouncements() {
       await createAnnouncement({
         title,
         body: message,
+        category,
         audience,
         authorName: "Registrar Office",
         authorRole: "registrar",
@@ -64,6 +67,7 @@ function RegistrarAnnouncements() {
       setTitle("");
       setMessage("");
       setAudience("all");
+      setCategory("general");
       loadAnnouncements();
     } catch (err: any) {
       toast.error(err?.message || "Failed to post announcement");
@@ -176,6 +180,20 @@ function RegistrarAnnouncements() {
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Enter announcement message..."
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Category</Label>
+              <Select value={category} onValueChange={(value: AnnouncementCategory) => setCategory(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">General</SelectItem>
+                  <SelectItem value="academic">Academic</SelectItem>
+                  <SelectItem value="event">Event</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label>Audience</Label>

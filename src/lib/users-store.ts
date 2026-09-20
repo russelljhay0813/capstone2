@@ -3,6 +3,7 @@ import {
   fetchUsers,
   fetchActivityLogs,
   createUser as apiCreateUser,
+  updateUserApi,
   type ActivityLogEntry,
 } from "./api";
 
@@ -98,12 +99,12 @@ export function useActivityLogs() {
 }
 
 export async function updateUser(id: string, patch: Partial<UserAccount>) {
-  const response = await fetch(`${API_BASE}/api/users/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patch),
+  await updateUserApi(id, {
+    firstName: patch.firstName || "",
+    middleName: patch.middleName,
+    lastName: patch.lastName || "",
+    email: patch.email || "",
   });
-  if (!response.ok) throw new Error("Failed to update user");
   broadcastUpdate();
 }
 

@@ -344,6 +344,28 @@ function requireRole(...allowedRoles) {
   };
 }
 
+function requireJwtRole(...allowedRoles) {
+  return (req, res, next) => {
+    const authHeader = req.get("Authorization") || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!token) return res.status(401).json({ error: "Authentication required" });
+
+    try {
+      const payload = jwt.verify(token, JWT_SECRET);
+      const role = String(payload.role || "").toLowerCase();
+      if (!allowedRoles.includes(role)) return res.status(403).json({ error: "Forbidden" });
+      req.userContext = {
+        role,
+        userId: String(payload.id || ""),
+        studentId: String(payload.studentId || ""),
+      };
+      return next();
+    } catch {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+  };
+}
+
 function requireSelfOrRole(resourceParamName, ...allowedRoles) {
   return (req, res, next) => {
     const { role, userId, studentId } = getRequestIdentity(req);
@@ -1003,6 +1025,18 @@ app.post("/api/sections", requireRole("admin", "registrar"), async (req, res) =>
 // ---------------------------------------------------------------------
 // STUDENTS (personal info only)
 // ---------------------------------------------------------------------
+app.get("/api/students/eligible-for-reenrollment", requireJwtRole("admin", "registrar"), async (_req, res) => {
+  const rows = await all(
+    db,
+    `SELECT DISTINCT s.studentId
+     FROM students s
+     JOIN enrollments e ON e.studentId = s.id
+     WHERE s.status = 'approved' AND e.status = 'enrolled'
+     ORDER BY s.studentId`,
+  );
+  res.json(rows);
+});
+
 app.get("/api/students", requireRole("admin", "registrar"), async (req, res) => {
   const status = req.query.status ? String(req.query.status) : null;
   const query = status
@@ -2497,12 +2531,16 @@ app.post("/api/announcements", requireRole("admin", "registrar"), async (req, re
   if (!title || !body) {
     return res.status(400).json({ error: "title and body are required" });
   }
+  const supportedCategories = ["general", "academic", "event", "urgent"];
+  if (!supportedCategories.includes(category)) {
+    return res.status(400).json({ error: "category must be one of: general, academic, event, urgent" });
+  }
   const id = `a-${Date.now()}`;
   const announcement = {
     id,
     title,
     body,
-    category: category || "general",
+    category,
     audience: audience || "all",
     subjectId: subjectId || null,
     pinned: false,
@@ -2519,14 +2557,34 @@ app.post("/api/announcements", requireRole("admin", "registrar"), async (req, re
   res.status(201).json(announcement);
 });
 
-app.delete("/api/announcements", async (req, res) => {
+app.put("/api/announcements/:id", requireRole("admin", "registrar"), async (req, res) => {
+  const existing = await get(db, "SELECT * FROM announcements WHERE id = ?", [req.params.id]);
+  if (!existing) return res.status(404).json({ error: "Announcement not found" });
+  const category = req.body.category ?? existing.category;
+  const supportedCategories = ["general", "academic", "event", "urgent"];
+  if (!supportedCategories.includes(category)) {
+    return res.status(400).json({ error: "category must be one of: general, academic, event, urgent" });
+  }
+  const title = req.body.title !== undefined ? String(req.body.title).trim() : existing.title;
+  const body = req.body.body !== undefined ? String(req.body.body).trim() : existing.body;
+  if (!title || !body) return res.status(400).json({ error: "title and body are required" });
+  await run(
+    db,
+    "UPDATE announcements SET title = ?, body = ?, category = ?, audience = ? WHERE id = ?",
+    [title, body, category, req.body.audience ?? existing.audience, req.params.id],
+  );
+  const updated = await get(db, "SELECT * FROM announcements WHERE id = ?", [req.params.id]);
+  res.json(updated);
+});
+
+app.delete("/api/announcements", requireRole("admin", "registrar"), async (req, res) => {
   const id = req.query.id ? String(req.query.id) : null;
   if (!id) return res.status(400).json({ error: "Announcement id is required" });
   await run(db, "DELETE FROM announcements WHERE id = ?", [id]);
   res.status(204).end();
 });
 
-app.patch("/api/announcements/:id/pin", async (req, res) => {
+app.patch("/api/announcements/:id/pin", requireRole("admin", "registrar"), async (req, res) => {
   const { id } = req.params;
   const existing = await get(db, "SELECT * FROM announcements WHERE id = ?", [id]);
   if (!existing) return res.status(404).json({ error: "Announcement not found" });
@@ -2620,10 +2678,36 @@ app.get("/api/dashboard/registrar", requireRole("admin", "registrar"), async (re
   });
 });
 
+app.get("/api/dashboard/admin", requireJwtRole("admin"), async (_req, res) => {
+  const totalStudents = await get(
+    db,
+    "SELECT COUNT(DISTINCT id) AS cnt FROM students WHERE status IN ('approved', 'active')",
+  );
+  const activeFaculty = await get(
+    db,
+    "SELECT COUNT(DISTINCT f.id) AS cnt FROM faculty f JOIN users u ON u.id = f.userId WHERE u.status = 'active'",
+  );
+  const activeOfferings = await get(
+    db,
+    "SELECT COUNT(DISTINCT id) AS cnt FROM subjectOfferings WHERE status = 'active'",
+  );
+  const pendingApplications = await get(
+    db,
+    "SELECT COUNT(DISTINCT id) AS cnt FROM students WHERE status IN ('pending', 'submitted', 'under_review')",
+  );
+
+  res.json({
+    totalStudents: Number(totalStudents?.cnt || 0),
+    activeFaculty: Number(activeFaculty?.cnt || 0),
+    activeOfferings: Number(activeOfferings?.cnt || 0),
+    pendingApplications: Number(pendingApplications?.cnt || 0),
+  });
+});
+
 // ---------------------------------------------------------------------
 // REPORTS
 // ---------------------------------------------------------------------
-app.get("/api/reports/enrollment", async (_req, res) => {
+app.get("/api/reports/enrollment", requireJwtRole("admin", "registrar"), async (_req, res) => {
   const enrollments = await all(db, "SELECT * FROM enrollments WHERE status = 'enrolled'");
   const students = await all(db, "SELECT id, firstName, lastName, studentId FROM students WHERE status = 'approved'");
   const report = {
@@ -2644,7 +2728,7 @@ app.get("/api/reports/enrollment", async (_req, res) => {
   res.json(report);
 });
 
-app.get("/api/reports/faculty-load", async (_req, res) => {
+app.get("/api/reports/faculty-load", requireJwtRole("admin", "registrar"), async (_req, res) => {
   const faculty = await all(db, "SELECT id, userId, firstName, lastName FROM faculty");
   const report = [];
   for (const f of faculty) {
@@ -2660,12 +2744,12 @@ app.get("/api/reports/faculty-load", async (_req, res) => {
   res.json(report);
 });
 
-app.get("/api/reports/students", async (_req, res) => {
+app.get("/api/reports/students", requireJwtRole("admin", "registrar"), async (_req, res) => {
   const rows = await all(db, "SELECT studentId, firstName, lastName FROM students WHERE status = 'approved' ORDER BY lastName, firstName");
   res.json(rows);
 });
 
-app.get("/api/reports/curriculum", async (_req, res) => {
+app.get("/api/reports/curriculum", requireJwtRole("admin", "registrar"), async (_req, res) => {
   const rows = await all(
     db,
     `SELECT p.name, c.yearLevel, c.semester, s.code as subjectCode, s.title as subjectTitle, s.units

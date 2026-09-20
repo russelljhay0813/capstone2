@@ -4,7 +4,12 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, "bwest.db");
+const DB_PATH = process.env.PIAT_DB_PATH || path.join(__dirname, "bwest.db");
+
+function hashSeedPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  return `scrypt$${salt}$${crypto.scryptSync(password, salt, 64).toString("hex")}`;
+}
 
 // ---------------------------------------------------------------------
 // Database helper functions
@@ -916,14 +921,15 @@ export async function initDb(db) {
 
   // ---- Default Users ----
   const adminExists = await get(db, "SELECT id FROM users WHERE role = 'admin' LIMIT 1");
-  if (!adminExists) {
+  if (!adminExists && process.env.PIAT_ALLOW_DEMO_ACCOUNTS === "true") {
     const now = Date.now();
     const adminId = crypto.randomUUID();
+    const adminPassword = hashSeedPassword("admin123");
     await run(
       db,
       `INSERT INTO users (id, userId, username, email, password, firstName, lastName, role, status, createdAt, temporaryPassword)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [adminId, "ADM-00001", "admin", "admin@bwest.edu.ph", "admin123", "System", "Administrator", "admin", "active", now, "admin123"]
+      [adminId, "ADM-00001", "admin", "admin@bwest.edu.ph", adminPassword, "System", "Administrator", "admin", "active", now, "admin123"]
     );
     const defaultUsers = [
       { id: crypto.randomUUID(), userId: "REG-00001", username: "registrar", email: "registrar@example.com", pass: "password", fname: "Maria", lname: "Santos", role: "registrar" },
@@ -935,7 +941,7 @@ export async function initDb(db) {
         db,
         `INSERT INTO users (id, userId, username, email, password, firstName, lastName, role, status, createdAt, temporaryPassword)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [u.id, u.userId, u.username, u.email, u.pass, u.fname, u.lname, u.role, "active", now, u.pass]
+        [u.id, u.userId, u.username, u.email, hashSeedPassword(u.pass), u.fname, u.lname, u.role, "active", now, u.pass]
       );
     }
   }

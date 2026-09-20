@@ -36,6 +36,7 @@ function UsersPage() {
   const [role, setRole] = useState<UserRole | "all">("all");
   const [status, setStatus] = useState<"all" | UserAccount["status"]>("all");
   const [showForm, setShowForm] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [saving, setSaving] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState<{
     staffId?: string;
@@ -50,6 +51,7 @@ function UsersPage() {
     lastName: "",
     email: "",
   });
+  const [editForm, setEditForm] = useState({ firstName: "", middleName: "", lastName: "", email: "" });
 
   const filteredUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -103,15 +105,35 @@ function UsersPage() {
     }
   };
 
-  const editName = async (user: UserAccount) => {
-    const firstName = window.prompt("First name", user.firstName);
-    const lastName = window.prompt("Last name", user.lastName);
-    if (!firstName?.trim() || !lastName?.trim()) return;
+  const openEdit = (user: UserAccount) => {
+    setEditingUser(user);
+    setEditForm({
+      firstName: user.firstName,
+      middleName: user.middleName || "",
+      lastName: user.lastName,
+      email: user.email || "",
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editingUser || !editForm.firstName.trim() || !editForm.lastName.trim()) {
+      toast.error("First name and last name are required.");
+      return;
+    }
+    setSaving(true);
     try {
-      await updateUser(user.id, { firstName: firstName.trim(), lastName: lastName.trim() });
+      await updateUser(editingUser.id, {
+        firstName: editForm.firstName.trim(),
+        middleName: editForm.middleName.trim() || null,
+        lastName: editForm.lastName.trim(),
+        email: editForm.email.trim(),
+      });
       toast.success("User updated.");
+      setEditingUser(null);
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Unable to update user.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -238,7 +260,7 @@ function UsersPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => editName(user)}>
+                      <Button variant="outline" size="sm" onClick={() => openEdit(user)}>
                         Edit
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => changeStatus(user)}>
@@ -262,6 +284,47 @@ function UsersPage() {
           </p>
         )}
       </div>
+      <Dialog open={editingUser !== null} onOpenChange={(open) => !open && setEditingUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Account</DialogTitle>
+            <DialogDescription>
+              Update the account identity fields. Passwords are managed separately and are never displayed here.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              className="rounded-lg border bg-background px-3 py-2 text-sm"
+              aria-label="First name"
+              value={editForm.firstName}
+              onChange={(event) => setEditForm({ ...editForm, firstName: event.target.value })}
+            />
+            <input
+              className="rounded-lg border bg-background px-3 py-2 text-sm"
+              aria-label="Middle name"
+              value={editForm.middleName}
+              onChange={(event) => setEditForm({ ...editForm, middleName: event.target.value })}
+            />
+            <input
+              className="rounded-lg border bg-background px-3 py-2 text-sm"
+              aria-label="Last name"
+              value={editForm.lastName}
+              onChange={(event) => setEditForm({ ...editForm, lastName: event.target.value })}
+            />
+            <input
+              className="rounded-lg border bg-background px-3 py-2 text-sm"
+              aria-label="Email"
+              type="email"
+              value={editForm.email}
+              onChange={(event) => setEditForm({ ...editForm, email: event.target.value })}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingUser(null)} disabled={saving}>Cancel</Button>
+            <Button onClick={saveEdit} disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={createdCredentials !== null}
         onOpenChange={(open) => !open && setCreatedCredentials(null)}

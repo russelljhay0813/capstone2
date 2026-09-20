@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { FileText, Users, BookOpen, GraduationCap, Download } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { useNavigate } from "@tanstack/react-router";
 import {
   fetchReportEnrollment,
   fetchReportFacultyLoad,
@@ -16,6 +18,8 @@ export const Route = createFileRoute("/dashboard/registrar/reports")({
 });
 
 function RegistrarReports() {
+  const { user, isHydrated } = useAuth();
+  const navigate = useNavigate();
   const [reportType, setReportType] = useState<ReportType>("enrollment");
   const [enrollmentData, setEnrollmentData] = useState<any>(null);
   const [facultyData, setFacultyData] = useState<any[]>([]);
@@ -23,7 +27,16 @@ function RegistrarReports() {
   const [curriculumData, setCurriculumData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const canViewReports = user?.role === "admin" || user?.role === "registrar";
+
+  useEffect(() => {
+    if (isHydrated && !canViewReports) {
+      navigate({ to: `/dashboard/${user?.role || "student"}` as any });
+    }
+  }, [canViewReports, isHydrated, navigate, user?.role]);
+
   const loadReport = async () => {
+    if (!canViewReports) return;
     setLoading(true);
     try {
       if (reportType === "enrollment") {
@@ -48,7 +61,9 @@ function RegistrarReports() {
 
   useEffect(() => {
     loadReport();
-  }, [reportType]);
+  }, [canViewReports, reportType]);
+
+  if (!isHydrated || !canViewReports) return null;
 
   const handleExport = () => {
     const csvEscape = (value: unknown): string => {
