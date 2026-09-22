@@ -1,14 +1,18 @@
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { getAuthToken } from "./storage";
 
 // ---------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------
-const API_BASE = String(
+const configuredApiBase = String(
   Constants.expoConfig?.extra?.API_BASE ??
     process.env.EXPO_PUBLIC_API_BASE ??
     "http://localhost:4000",
 );
+const API_BASE = Platform.OS === "web"
+  ? configuredApiBase.replace("http://10.0.2.2:4000", "http://localhost:4000")
+  : configuredApiBase;
 const REQUEST_TIMEOUT = 20000;
 
 async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {

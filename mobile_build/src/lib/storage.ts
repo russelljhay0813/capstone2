@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 const AUTH_KEY = "piat_mobile_auth";
 
@@ -18,16 +19,26 @@ export interface AuthData {
   };
 }
 
+const isWeb = Platform.OS === "web";
+
+function getWebStorage(): Storage | null {
+  return typeof window === "undefined" ? null : window.localStorage;
+}
+
 export async function saveAuthData(authData: AuthData): Promise<void> {
+  if (isWeb) {
+    getWebStorage()?.setItem(AUTH_KEY, JSON.stringify(authData));
+    return;
+  }
   await SecureStore.setItemAsync(AUTH_KEY, JSON.stringify(authData), {
     keychainService: "piat-mobile",
   });
 }
 
 export async function getAuthData(): Promise<AuthData | null> {
-  const stored = await SecureStore.getItemAsync(AUTH_KEY, {
-    keychainService: "piat-mobile",
-  });
+  const stored = isWeb
+    ? getWebStorage()?.getItem(AUTH_KEY)
+    : await SecureStore.getItemAsync(AUTH_KEY, { keychainService: "piat-mobile" });
   return stored ? (JSON.parse(stored) as AuthData) : null;
 }
 
@@ -37,6 +48,10 @@ export async function getAuthToken(): Promise<string | null> {
 }
 
 export async function deleteAuthData(): Promise<void> {
+  if (isWeb) {
+    getWebStorage()?.removeItem(AUTH_KEY);
+    return;
+  }
   await SecureStore.deleteItemAsync(AUTH_KEY, {
     keychainService: "piat-mobile",
   });
