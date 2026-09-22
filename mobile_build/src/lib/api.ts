@@ -12,8 +12,7 @@ const API_BASE = String(
 const REQUEST_TIMEOUT = 20000;
 
 async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timeoutId = setTimeout(() => undefined, REQUEST_TIMEOUT);
 
   try {
     const token = await getAuthToken();
@@ -26,15 +25,14 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
 
     let response: Response;
     try {
-      response = await fetch(`${API_BASE}${path}`, {
-        headers,
-        ...opts,
-        signal: controller.signal,
-      });
+      response = await Promise.race([
+        fetch(`${API_BASE}${path}`, { ...opts, headers }),
+        new Promise<Response>((_, reject) => {
+          setTimeout(() => reject(new Error(`Request timed out while contacting ${API_BASE}`)), REQUEST_TIMEOUT);
+        }),
+      ]);
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(`Request timed out while contacting ${API_BASE}`);
-      }
+      if (error instanceof Error && error.message.startsWith("Request timed out")) throw error;
       throw new Error(`Unable to reach the backend at ${API_BASE}`);
     }
 
