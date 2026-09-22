@@ -34,9 +34,8 @@ This repository contains the PIAT Academic Management System, a multi-platform a
    ```
 4. Start the mobile app (optional):
    ```bash
-   cd mobile_build
-   npm install
-   npm start
+   npm --prefix mobile_build install
+   npm run mobile:start
    ```
 
 ## Backend and data seeding

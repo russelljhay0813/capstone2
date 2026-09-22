@@ -39,8 +39,10 @@ This folder contains the Expo-based mobile client for the PIAT Academic Manageme
 4. Start the mobile app:
    ```bash
    cd ../mobile_build
-   npm start
+   npm run start
    ```
+
+   When running from the repository root, use `npm run mobile:start` instead. Expo must be started with `mobile_build` as its project root because the app uses Expo Router and has no root-level `App` module.
 
 ## Useful scripts
 
