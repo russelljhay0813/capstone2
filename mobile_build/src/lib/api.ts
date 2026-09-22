@@ -24,11 +24,19 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
 
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const response = await fetch(`${API_BASE}${path}`, {
-      headers,
-      ...opts,
-      signal: controller.signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}${path}`, {
+        headers,
+        ...opts,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(`Request timed out while contacting ${API_BASE}`);
+      }
+      throw new Error(`Unable to reach the backend at ${API_BASE}`);
+    }
 
     if (!response.ok) {
       let payload: { error?: string } | null = null;

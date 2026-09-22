@@ -2,11 +2,12 @@ import * as SQLite from "expo-sqlite";
 
 const DB_NAME = "piat_mobile.db";
 const db = SQLite.openDatabaseSync(DB_NAME);
+let initialization: Promise<void> | null = null;
 
 // ---------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------
-export async function initDb() {
+async function initializeDb() {
   await db.execAsync(`PRAGMA foreign_keys = ON;`);
 
   await db.execAsync(`
@@ -81,6 +82,11 @@ export async function initDb() {
   }
 }
 
+export function initDb(): Promise<void> {
+  initialization ??= initializeDb();
+  return initialization;
+}
+
 // ---------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------
@@ -112,6 +118,7 @@ export interface AttendanceSaveResult extends AttendanceRecord {
 // CRUD operations
 // ---------------------------------------------------------------------
 export async function upsertFaculty(faculty: Record<string, string | null>) {
+  await initDb();
   await db.runAsync(
     `INSERT OR REPLACE INTO faculty (id, email, firstName, lastName, role, program, yearLevel, semester, academicYear) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -129,6 +136,7 @@ export async function upsertFaculty(faculty: Record<string, string | null>) {
 }
 
 export async function upsertOfferings(offerings: Array<Record<string, any>>) {
+  await initDb();
   await Promise.all(
     offerings.map((offering) =>
       db.runAsync(
@@ -155,6 +163,7 @@ export async function upsertOfferings(offerings: Array<Record<string, any>>) {
 }
 
 export async function upsertStudents(students: Array<Record<string, string | null>>) {
+  await initDb();
   await Promise.all(
     students.map((student) =>
       db.runAsync(
@@ -175,6 +184,7 @@ export async function upsertStudents(students: Array<Record<string, string | nul
 }
 
 export async function upsertOfferingStudents(offeringId: string, studentIds: string[]) {
+  await initDb();
   await db.runAsync(`DELETE FROM offering_students WHERE offeringId = ?`, [offeringId]);
   await Promise.all(
     studentIds.map((studentId) =>
@@ -187,6 +197,7 @@ export async function upsertOfferingStudents(offeringId: string, studentIds: str
 }
 
 export async function getOfferingById(offeringId: string): Promise<any | null> {
+  await initDb();
   return (await db.getFirstAsync(`SELECT * FROM offerings WHERE id = ?`, [offeringId])) ?? null;
 }
 
@@ -195,6 +206,7 @@ export async function getAttendanceRecord(
   offeringId: string,
   date: string,
 ): Promise<any | null> {
+  await initDb();
   return (
     (await db.getFirstAsync(
       `SELECT * FROM attendance WHERE studentId = ? AND offeringId = ? AND date = ?`,
@@ -206,6 +218,7 @@ export async function getAttendanceRecord(
 export async function saveAttendanceRecord(
   record: AttendanceRecord,
 ): Promise<AttendanceSaveResult> {
+  await initDb();
   const existing = await getAttendanceRecord(record.studentId, record.offeringId, record.date);
   const id = existing ? existing.id : record.id;
   const previousStatus = existing?.status ?? null;
@@ -238,6 +251,7 @@ export async function saveAttendanceRecord(
 }
 
 export async function getOfferingRoster(offeringId: string, date: string): Promise<any[]> {
+  await initDb();
   return await db.getAllAsync(
     `SELECT st.*, a.status AS attendanceStatus, a.syncStatus AS attendanceSyncStatus, a.id AS attendanceId
      FROM offering_students os
@@ -250,12 +264,14 @@ export async function getOfferingRoster(offeringId: string, date: string): Promi
 }
 
 export async function getTodayOfferings(facultyId: string): Promise<any[]> {
+  await initDb();
   return await db.getAllAsync(`SELECT * FROM offerings WHERE facultyId = ? ORDER BY subjectCode`, [
     facultyId,
   ]);
 }
 
 export async function getTotalStudentsForFaculty(facultyId: string): Promise<number> {
+  await initDb();
   const row = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(DISTINCT os.studentId) AS count
      FROM offering_students os
@@ -267,11 +283,13 @@ export async function getTotalStudentsForFaculty(facultyId: string): Promise<num
 }
 
 export async function getPendingAttendance(): Promise<any[]> {
+  await initDb();
   return await db.getAllAsync(
     `SELECT * FROM attendance WHERE syncStatus = 'pending' OR syncStatus = 'failed' ORDER BY updatedAt ASC`,
   );
 }
 
 export async function updateAttendanceSyncStatus(id: string, syncStatus: AttendanceSyncStatus) {
+  await initDb();
   await db.runAsync(`UPDATE attendance SET syncStatus = ? WHERE id = ?`, [syncStatus, id]);
 }

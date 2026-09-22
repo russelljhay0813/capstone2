@@ -16,8 +16,9 @@ export default function Layout() {
 
   useEffect(() => {
     // Initialize local SQLite database and start sync process
-    initDb().catch(console.error);
-    sync.init();
+    initDb()
+      .then(() => sync.init())
+      .catch(console.error);
   }, []);
 
   return (
