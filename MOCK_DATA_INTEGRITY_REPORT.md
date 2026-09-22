@@ -1,6 +1,6 @@
 # Mock Data Integrity Report
 
-- Audit date: 2026-09-17T14:18:30.248Z
+- Audit date: 2026-09-21T11:59:15.345Z
 - Dataset marker: `[MOCK-DATA:PIAT-SYSTEM-TEST]`
 - Scope: marked mock students and their related mock sections/offerings
 
@@ -10,7 +10,7 @@
 - Student accounts: 200
 - Curriculum records: 223
 - Subject offerings: 891
-- Enrollments: 4787
+- Enrollments: 4795
 - Grades: 3809
 - Attendance: 2280
 - Academic records: 3726
@@ -38,7 +38,7 @@ The expected value is computed as the count of each section's program/year/semes
 
 Faculty without mock assignments: 0
 Students with no grades: 1
-Pending incomplete students without subjects (expected scenario): 10
+Pending incomplete students without subjects (expected scenario): 9
 
 ## Application and UI Findings
 
@@ -66,6 +66,7 @@ Pending incomplete students without subjects (expected scenario): 10
 | Diploma in Hospitality Services and Technology | 1st Year | First Semester | B | 10 | 8.00 | 80 |
 | Diploma in Hospitality Services and Technology | 1st Year | First Semester | C | 9 | 8.00 | 72 |
 | Diploma in Hospitality Services and Technology | 1st Year | First Semester | C | 3 | 8.00 | 24 |
+| Diploma in Hospitality Services and Technology | 1st Year | First Semester | r | 1 | 8.00 | 8 |
 | Diploma in Hospitality Services and Technology | 1st Year | Second Semester | A | 10 | 8.00 | 80 |
 | Diploma in Hospitality Services and Technology | 1st Year | Second Semester | B | 10 | 8.00 | 80 |
 | Diploma in Hospitality Services and Technology | 1st Year | Second Semester | C | 9 | 8.00 | 72 |

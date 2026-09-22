@@ -1,8 +1,7 @@
 import jwt from "jsonwebtoken";
 
 /**
- * Extracts the requesting user's identity from the Authorization header
- * or fallback request headers.
+ * Extracts the requesting user's identity from a verified Authorization JWT.
  *
  * In the new schema:
  * - `userId` corresponds to `users.id` (UUID)
@@ -25,33 +24,9 @@ export function resolveRequestIdentity(req, jwtSecret) {
         studentId: String(payload.studentId || ""),
       };
     } catch {
-      // Token invalid – fall through to header-based identity
+      return { role: "", userId: "", studentId: "" };
     }
   }
 
-  const roleHeader = String(req.get("x-user-role") || "").toLowerCase();
-  const userIdHeader = String(req.get("x-user-id") || "");
-  const studentIdHeader = String(req.get("x-user-student-id") || "");
-
-  if (roleHeader) {
-    return {
-      role: roleHeader,
-      userId: userIdHeader,
-      studentId: studentIdHeader,
-    };
-  }
-
-  if (process.env.NODE_ENV === "production") {
-    return {
-      role: "",
-      userId: "",
-      studentId: "",
-    };
-  }
-
-  return {
-    role: "admin",
-    userId: "local-dev",
-    studentId: "",
-  };
+  return { role: "", userId: "", studentId: "" };
 }

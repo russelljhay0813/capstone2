@@ -432,6 +432,31 @@ async function facultyOwnsOffering(offeringFacultyId, userId) {
   return Boolean(faculty && String(offeringFacultyId) === String(faculty.id));
 }
 
+const ATTENDANCE_STATUSES = new Set(["present", "late", "absent", "excused"]);
+
+function isValidAttendanceDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+async function resolveAttendanceAuthorization(studentUuid, subjectOfferingId, identity) {
+  const offering = await get(
+    db,
+    `SELECT o.id, o.facultyId, e.id AS enrollmentId
+     FROM subjectOfferings o
+     LEFT JOIN enrollments e ON e.subjectOfferingId = o.id AND e.studentId = ? AND e.status = 'enrolled'
+     WHERE o.id = ?`,
+    [studentUuid, subjectOfferingId],
+  );
+  if (!offering) return { error: "Offering not found", status: 404 };
+  if (identity.role === "faculty" && !(await facultyOwnsOffering(offering.facultyId, identity.userId))) {
+    return { error: "Forbidden", status: 403 };
+  }
+  if (!offering.enrollmentId) return { error: "Student is not enrolled in this offering", status: 403 };
+  return { offering };
+}
+
 function generateTemporaryPassword() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let password = "";
@@ -811,6 +836,33 @@ app.get("/api/subject-offerings/:id", async (req, res) => {
   );
   if (!row) return res.status(404).json({ error: "Offering not found" });
   res.json(row);
+});
+
+app.get("/api/faculty/offerings", requireJwtRole("faculty"), async (req, res) => {
+  const rows = await all(
+    db,
+    `SELECT
+       o.*,
+       s.code AS subjectCode, s.title AS subjectTitle, s.units,
+       a.code AS academicYearCode,
+       sem.name AS semesterName,
+       sec.name AS sectionName, sec.yearLevel,
+       p.name AS programName,
+       u.firstName || ' ' || u.lastName AS facultyName,
+       (SELECT COUNT(*) FROM enrollments e WHERE e.subjectOfferingId = o.id AND e.status = 'enrolled') AS enrolledStudentCount
+     FROM subjectOfferings o
+     JOIN subjects s ON s.id = o.subjectId
+     JOIN academicYears a ON a.id = o.academicYearId
+     JOIN semesters sem ON sem.id = o.semesterId
+     JOIN sections sec ON sec.id = o.sectionId
+     JOIN programs p ON p.id = sec.programId
+     JOIN faculty f ON f.id = o.facultyId
+     JOIN users u ON u.id = f.userId
+     WHERE f.userId = ?
+     ORDER BY a.code DESC, sem.sequence, sec.name, s.code`,
+    [req.userContext.userId],
+  );
+  res.json(rows);
 });
 
 app.post("/api/subject-offerings", requireRole("admin", "registrar"), async (req, res) => {
@@ -1796,7 +1848,7 @@ app.delete("/api/grades", requireRole("admin", "faculty"), async (req, res) => {
 // ---------------------------------------------------------------------
 // ATTENDANCE (using subjectOfferingId)
 // ---------------------------------------------------------------------
-app.get("/api/attendance", requireRole("admin", "faculty", "registrar", "student"), async (req, res) => {
+app.get("/api/attendance", requireJwtRole("admin", "faculty", "registrar", "student"), async (req, res) => {
   const subjectOfferingId = req.query.subjectOfferingId ? String(req.query.subjectOfferingId) : null;
   const date = req.query.date ? String(req.query.date) : null;
   const requestedStudentId = req.query.studentId ? String(req.query.studentId) : null;
@@ -1868,21 +1920,21 @@ app.get("/api/attendance", requireRole("admin", "faculty", "registrar", "student
   res.json(rows);
 });
 
-app.post("/api/attendance", requireRole("admin", "faculty"), async (req, res) => {
+app.post("/api/attendance", requireJwtRole("admin", "faculty"), async (req, res) => {
   const { studentId, subjectOfferingId, date, status, time } = req.body;
   if (!studentId || !subjectOfferingId || !date || !status) {
     return sendError(res, 400, "studentId, subjectOfferingId, date, and status are required");
   }
+  if (!ATTENDANCE_STATUSES.has(String(status).toLowerCase())) {
+    return sendError(res, 400, "status must be present, late, absent, or excused");
+  }
+  if (!isValidAttendanceDate(date)) return sendError(res, 400, "date must be a valid ISO date");
 
   const studentUuid = await resolveStudentUuid(studentId);
   if (!studentUuid) return res.status(404).json({ error: "Student not found" });
 
-  const offering = await get(db, "SELECT id, facultyId FROM subjectOfferings WHERE id = ?", [subjectOfferingId]);
-  if (!offering) return res.status(404).json({ error: "Offering not found" });
-
-  if (req.userContext.role === "faculty" && !(await facultyOwnsOffering(offering.facultyId, req.userContext.userId))) {
-    return sendError(res, 403, "Forbidden");
-  }
+  const authorization = await resolveAttendanceAuthorization(studentUuid, subjectOfferingId, req.userContext);
+  if (authorization.error) return sendError(res, authorization.status, authorization.error);
 
   const existing = await get(
     db,
@@ -1936,7 +1988,7 @@ app.post("/api/attendance", requireRole("admin", "faculty"), async (req, res) =>
 });
 
 // Bulk attendance - adapt similarly
-app.post("/api/attendance/bulk", requireRole("admin", "faculty"), async (req, res) => {
+app.post("/api/attendance/bulk", requireJwtRole("admin", "faculty"), async (req, res) => {
   const records = Array.isArray(req.body?.records) ? req.body.records : null;
   if (!records || records.length === 0) {
     return sendError(res, 400, "records must be a non-empty array");
@@ -1950,6 +2002,14 @@ app.post("/api/attendance/bulk", requireRole("admin", "faculty"), async (req, re
       results.push({ localId, status: "failed", error: "Missing required fields" });
       continue;
     }
+    if (!ATTENDANCE_STATUSES.has(String(status).toLowerCase())) {
+      results.push({ localId, status: "failed", error: "Invalid attendance status" });
+      continue;
+    }
+    if (!isValidAttendanceDate(date)) {
+      results.push({ localId, status: "failed", error: "Invalid attendance date" });
+      continue;
+    }
 
     const studentUuid = await resolveStudentUuid(studentId);
     if (!studentUuid) {
@@ -1957,13 +2017,9 @@ app.post("/api/attendance/bulk", requireRole("admin", "faculty"), async (req, re
       continue;
     }
 
-    const offering = await get(db, "SELECT id, facultyId FROM subjectOfferings WHERE id = ?", [subjectOfferingId]);
-    if (!offering) {
-      results.push({ localId, status: "failed", error: "Offering not found" });
-      continue;
-    }
-    if (req.userContext.role === "faculty" && !(await facultyOwnsOffering(offering.facultyId, req.userContext.userId))) {
-      results.push({ localId, status: "failed", error: "Forbidden" });
+    const authorization = await resolveAttendanceAuthorization(studentUuid, subjectOfferingId, req.userContext);
+    if (authorization.error) {
+      results.push({ localId, status: "failed", error: authorization.error });
       continue;
     }
 
@@ -2017,7 +2073,7 @@ app.post("/api/attendance/bulk", requireRole("admin", "faculty"), async (req, re
 // ---------------------------------------------------------------------
 // FACULTY ENDPOINTS (adapted)
 // ---------------------------------------------------------------------
-app.get("/api/faculty/subjects", requireRole("admin", "faculty"), async (req, res) => {
+app.get("/api/faculty/subjects", requireJwtRole("admin", "faculty"), async (req, res) => {
   const rows = await all(
     db,
     `SELECT o.*, s.code, s.title, s.units,
@@ -2036,7 +2092,7 @@ app.get("/api/faculty/subjects", requireRole("admin", "faculty"), async (req, re
 
 app.get(
   "/api/faculty/subjects/:subjectId/students",
-  requireRole("admin", "faculty"),
+  requireJwtRole("admin", "faculty"),
   async (req, res) => {
     const offering = await get(db, "SELECT id, facultyId FROM subjectOfferings WHERE id = ?", [req.params.subjectId]);
     if (!offering) return res.status(404).json({ error: "Offering not found" });
