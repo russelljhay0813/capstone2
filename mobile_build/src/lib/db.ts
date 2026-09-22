@@ -35,7 +35,8 @@ export async function initDb() {
       semesterName TEXT,
       yearLevel TEXT,
       programName TEXT,
-      sectionName TEXT
+      sectionName TEXT,
+      enrolledStudentCount INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS students (
@@ -73,6 +74,11 @@ export async function initDb() {
       UNIQUE(studentId, offeringId, date)
     );
   `);
+
+  const offeringColumns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(offerings)`);
+  if (!offeringColumns.some((column) => column.name === "enrolledStudentCount")) {
+    await db.execAsync(`ALTER TABLE offerings ADD COLUMN enrolledStudentCount INTEGER NOT NULL DEFAULT 0`);
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -122,11 +128,11 @@ export async function upsertFaculty(faculty: Record<string, string | null>) {
   );
 }
 
-export async function upsertOfferings(offerings: Array<Record<string, string | null>>) {
+export async function upsertOfferings(offerings: Array<Record<string, any>>) {
   await Promise.all(
     offerings.map((offering) =>
       db.runAsync(
-        `INSERT OR REPLACE INTO offerings (id, subjectId, subjectCode, subjectTitle, units, schedule, room, facultyId, academicYearCode, semesterName, yearLevel, programName, sectionName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO offerings (id, subjectId, subjectCode, subjectTitle, units, schedule, room, facultyId, academicYearCode, semesterName, yearLevel, programName, sectionName, enrolledStudentCount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           offering.id,
           offering.subjectId,
@@ -141,6 +147,7 @@ export async function upsertOfferings(offerings: Array<Record<string, string | n
           offering.yearLevel,
           offering.programName,
           offering.sectionName,
+          offering.enrolledStudentCount ?? 0,
         ],
       ),
     ),

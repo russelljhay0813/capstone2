@@ -72,7 +72,7 @@ export default function DashboardScreen() {
               <List.Item
                 key={offering.id}
                 title={`${offering.subjectCode} • ${offering.subjectTitle}`}
-                description={`${offering.schedule} • ${offering.room}`}
+                description={`${offering.programName} • ${offering.yearLevel} • ${offering.sectionName} • ${offering.enrolledStudentCount ?? 0} students`}
                 onPress={() => router.push(`/attendance/${offering.id}`)}
               />
             ))

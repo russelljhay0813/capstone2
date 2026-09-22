@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import { getAuthData, getAuthToken } from "./storage";
+import { getAuthToken } from "./storage";
 
 // ---------------------------------------------------------------------
 // Configuration
@@ -17,19 +17,12 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
 
   try {
     const token = await getAuthToken();
-    const authData = token ? await getAuthData() : null;
-
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(opts.headers as Record<string, string> ?? {}),
     };
 
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    if (authData?.user) {
-      headers["x-user-id"] = authData.user.id;
-      headers["x-user-role"] = authData.user.role;
-      if (authData.user.studentId) headers["x-user-student-id"] = authData.user.studentId;
-    }
 
     const response = await fetch(`${API_BASE}${path}`, {
       headers,
@@ -153,14 +146,13 @@ export async function fetchUserProfile(): Promise<UserProfile> {
   return request<UserProfile>("/api/users/profile");
 }
 
-export async function fetchFacultyOfferings(facultyId: string): Promise<SubjectOffering[]> {
-  const params = new URLSearchParams({ facultyId });
-  return request<SubjectOffering[]>(`/api/subject-offerings?${params.toString()}`);
+export async function fetchFacultyOfferings(): Promise<SubjectOffering[]> {
+  return request<SubjectOffering[]>("/api/faculty/offerings");
 }
 
 export async function fetchOfferingStudents(offeringId: string): Promise<StudentRecord[]> {
   return request<StudentRecord[]>(
-    `/api/faculty/offerings/${encodeURIComponent(offeringId)}/students`,
+    `/api/faculty/subjects/${encodeURIComponent(offeringId)}/students`,
   );
 }
 

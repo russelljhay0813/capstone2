@@ -47,8 +47,10 @@ export default function LoginScreen() {
         academicYear: authData.academicYear ?? null,
       });
 
-      const offerings = await fetchFacultyOfferings(authData.id);
-      await upsertOfferings(offerings);
+      const offerings = await fetchFacultyOfferings();
+      await upsertOfferings(
+        offerings.map((offering) => ({ ...offering, facultyId: authData.id })),
+      );
 
       for (const offering of offerings) {
         const students = await fetchOfferingStudents(offering.id);

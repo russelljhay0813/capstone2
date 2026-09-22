@@ -61,9 +61,10 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       const payload = pending.map((record) => ({
         localId: record.id,
         studentId: record.studentId,
-        subjectId: record.subjectId,
+        subjectOfferingId: record.offeringId,
         date: record.date,
         status: record.status,
+        time: record.time,
       }));
 
       const results = await saveAttendanceBulk(payload);
