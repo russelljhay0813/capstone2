@@ -1,0 +1,16 @@
+import { useEffect, useState } from "react";
+import { FlatList, StyleSheet, View } from "react-native";
+import { Card, Text, ActivityIndicator, Button } from "react-native-paper";
+import { useRouter } from "expo-router";
+import { getAuthData } from "../src/lib/storage";
+import { getFacultyOfferings } from "../src/lib/db";
+import { colors, MobileShell, SectionLabel } from "../src/components/MobileShell";
+
+export default function SubjectsScreen() {
+  const router = useRouter();
+  const [offerings, setOfferings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { getAuthData().then((auth) => auth?.user?.id ? getFacultyOfferings(auth.user.id).then(setOfferings) : undefined).finally(() => setLoading(false)); }, []);
+  return <MobileShell title="Assigned subjects" subtitle="Your faculty teaching load"><View style={styles.header}><SectionLabel>{offerings.length} assigned {offerings.length === 1 ? "subject" : "subjects"}</SectionLabel><Text style={styles.caption}>Select a class to open its student roster.</Text></View>{loading ? <ActivityIndicator color={colors.teal} /> : offerings.length === 0 ? <Card style={styles.empty}><Card.Content><Text style={styles.emptyTitle}>No assigned subjects found.</Text><Text style={styles.caption}>Your current teaching assignments will appear here.</Text></Card.Content></Card> : <FlatList data={offerings} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} renderItem={({ item }) => <Card style={styles.card} onPress={() => router.push(`/attendance/${item.id}`)}><Card.Content><View style={styles.row}><View style={styles.code}><Text style={styles.codeText}>{item.subjectCode}</Text></View><View style={styles.flex}><Text style={styles.subject}>{item.subjectTitle}</Text><Text style={styles.meta}>{item.programName ?? "Program"} · Year {item.yearLevel ?? "-"}</Text></View></View><Text style={styles.detail}>{item.sectionName ?? "Section"}  ·  {item.schedule ?? "Schedule to be announced"}</Text><Text style={styles.detail}>{item.room ?? "Room to be announced"}  ·  {item.enrolledStudentCount ?? 0} students</Text><Button mode="text" compact textColor={colors.teal} onPress={() => router.push(`/attendance/${item.id}`)}>Open roster</Button></Card.Content></Card>} />}</MobileShell>;
+}
+const styles = StyleSheet.create({ header: { marginBottom: 4 }, caption: { color: colors.muted, fontSize: 13 }, list: { paddingBottom: 20, gap: 12 }, card: { borderRadius: 14, backgroundColor: colors.white }, empty: { borderRadius: 14, backgroundColor: colors.white }, emptyTitle: { color: colors.ink, fontWeight: "700", marginBottom: 5 }, row: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 }, code: { backgroundColor: colors.tealSoft, borderRadius: 10, padding: 9 }, codeText: { color: colors.teal, fontWeight: "800", fontSize: 12 }, flex: { flex: 1 }, subject: { color: colors.ink, fontWeight: "800", fontSize: 16 }, meta: { color: colors.muted, marginTop: 3, fontSize: 12 }, detail: { color: colors.muted, marginTop: 5, fontSize: 13 } });

@@ -1,102 +1,41 @@
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
-import { Button, Card, Text, Title, List } from "react-native-paper";
-import { getAuthData, deleteAuthData } from "../../src/lib/storage";
-import { getTodayOfferings, getTotalStudentsForFaculty } from "../../src/lib/db";
+import { FlatList, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Button, Card, Text } from "react-native-paper";
 import { useRouter } from "expo-router";
-import { useSyncStore } from "../../src/lib/sync-store";
+import { getAuthData } from "../lib/storage";
+import { getTodayOfferings, getTotalStudentsForFaculty } from "../lib/db";
+import { colors, MobileShell, SectionLabel } from "../components/MobileShell";
+import { useSyncStore } from "../lib/sync-store";
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const [profile, setProfile] = useState<any>(null);
   const [offerings, setOfferings] = useState<any[]>([]);
-  const [profile, setProfile] = useState<Record<string, any> | null>(null);
   const [studentCount, setStudentCount] = useState(0);
-  const { isConnected, lastSyncAt, isSyncing, syncPendingAttendance, pendingCount } =
-    useSyncStore();
+  const [loading, setLoading] = useState(true);
+  const sync = useSyncStore();
 
   useEffect(() => {
-    async function load() {
-      const auth = await getAuthData();
-      setProfile(auth?.user ?? null);
+    getAuthData().then(async (auth) => {
+      setProfile(auth?.user);
       if (auth?.user?.id) {
-        const offerings = await getTodayOfferings(auth.user.id);
-        setOfferings(offerings);
-        const studentCount = await getTotalStudentsForFaculty(auth.user.id);
-        setStudentCount(studentCount);
+        setOfferings(await getTodayOfferings(auth.user.id));
+        setStudentCount(await getTotalStudentsForFaculty(auth.user.id));
       }
-    }
-    load().catch(console.error);
+    }).finally(() => setLoading(false));
   }, []);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Title>Welcome, {profile?.firstName ?? "Faculty"}</Title>
-        <Text>{profile?.program ?? "Program not loaded"}</Text>
-        <Text>{profile?.yearLevel ?? "Year not loaded"}</Text>
-      </View>
-      <View style={styles.statsRow}>
-        <Card style={styles.statCard}>
-          <Card.Content>
-            <Text>Total Offerings</Text>
-            <Title>{offerings.length}</Title>
-          </Card.Content>
-        </Card>
-        <Card style={styles.statCard}>
-          <Card.Content>
-            <Text>Total Students</Text>
-            <Title>{studentCount}</Title>
-          </Card.Content>
-        </Card>
-      </View>
-      <Card style={styles.card}>
-        <Card.Title title="Sync Status" subtitle={isConnected ? "Online" : "Offline"} />
-        <Card.Content>
-          <Text>Pending: {pendingCount}</Text>
-          <Text>Last Sync: {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : "Never"}</Text>
-          <Text>{isSyncing ? "Syncing..." : "Idle"}</Text>
-        </Card.Content>
-        <Card.Actions>
-          <Button onPress={syncPendingAttendance} disabled={isSyncing}>
-            Sync Now
-          </Button>
-        </Card.Actions>
-      </Card>
-      <Card style={styles.card}>
-        <Card.Title title="Today's Assigned Subjects" />
-        <Card.Content>
-          {offerings.length === 0 ? (
-            <Text>No classes found.</Text>
-          ) : (
-            offerings.map((offering) => (
-              <List.Item
-                key={offering.id}
-                title={`${offering.subjectCode} • ${offering.subjectTitle}`}
-                description={`${offering.programName} • ${offering.yearLevel} • ${offering.sectionName} • ${offering.enrolledStudentCount ?? 0} students`}
-                onPress={() => router.push(`/attendance/${offering.id}`)}
-              />
-            ))
-          )}
-        </Card.Content>
-      </Card>
-      <Button
-        mode="outlined"
-        onPress={async () => {
-          await deleteAuthData();
-          router.replace("/login");
-        }}
-      >
-        Logout
-      </Button>
-    </ScrollView>
+    <MobileShell title="Dashboard" subtitle={`Good morning, ${profile?.firstName ?? "Faculty"}`}>
+      <View style={styles.welcome}><Text style={styles.welcomeTitle}>Ready for today’s classes?</Text><Text style={styles.caption}>Keep attendance accurate, even when you are offline.</Text></View>
+      <View style={styles.stats}><Stat label="Assigned subjects" value={offerings.length} /><Stat label="Students" value={studentCount} /><Stat label="Pending sync" value={sync.pendingCount} /></View>
+      <Card style={styles.syncCard}><Card.Content><View style={styles.syncRow}><View style={styles.flex}><Text style={styles.cardTitle}>{sync.isConnected ? "All systems online" : "Offline mode active"}</Text><Text style={styles.caption}>{sync.isConnected ? "Attendance will sync automatically." : "Attendance will sync when internet returns."}</Text></View><Text style={[styles.syncStatus, { color: sync.isConnected ? colors.green : colors.amber }]}>{sync.isConnected ? "ONLINE" : "OFFLINE"}</Text></View>{sync.pendingCount > 0 ? <Button mode="text" compact textColor={colors.teal} onPress={sync.syncPendingAttendance} loading={sync.isSyncing}>Sync pending attendance</Button> : null}</Card.Content></Card>
+      <SectionLabel>Today’s classes</SectionLabel>
+      {loading ? <ActivityIndicator color={colors.teal} /> : offerings.length === 0 ? <Card style={styles.empty}><Card.Content><Text style={styles.cardTitle}>No classes scheduled today.</Text><Text style={styles.caption}>Your assigned subjects are still available from Subjects.</Text></Card.Content></Card> : <FlatList data={offerings} scrollEnabled={false} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} renderItem={({ item }) => <Card style={styles.classCard}><Card.Content><View style={styles.row}><View style={styles.code}><Text style={styles.codeText}>{item.subjectCode}</Text></View><View style={styles.flex}><Text style={styles.subject}>{item.subjectTitle}</Text><Text style={styles.caption}>{item.sectionName ?? "Section"} · {item.schedule ?? "Schedule"}</Text></View></View><View style={styles.details}><Text style={styles.caption}>{item.room ?? "Room to be announced"}</Text><Text style={styles.caption}>{item.enrolledStudentCount ?? 0} students</Text></View><Button mode="contained" buttonColor={colors.teal} onPress={() => router.push(`/attendance/${item.id}`)}>Take attendance</Button></Card.Content></Card>} />}
+    </MobileShell>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f3f3f3" },
-  content: { padding: 16, gap: 16 },
-  header: { marginBottom: 12 },
-  card: { padding: 0 },
-  statsRow: { flexDirection: "row", gap: 12, justifyContent: "space-between" },
-  statCard: { flex: 1 },
-});
+function Stat({ label, value }: { label: string; value: number }) { return <Card style={styles.stat}><Card.Content><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></Card.Content></Card>; }
+
+const styles = StyleSheet.create({ welcome: { marginBottom: 16 }, welcomeTitle: { color: colors.ink, fontWeight: "800", fontSize: 20, marginBottom: 4 }, caption: { color: colors.muted, fontSize: 13 }, stats: { flexDirection: "row", gap: 8, marginBottom: 14 }, stat: { flex: 1, borderRadius: 13, backgroundColor: colors.white }, statValue: { color: colors.teal, fontSize: 22, fontWeight: "800" }, statLabel: { color: colors.muted, fontSize: 11, marginTop: 4 }, syncCard: { borderRadius: 14, backgroundColor: colors.white, marginBottom: 20 }, syncRow: { flexDirection: "row", alignItems: "center" }, flex: { flex: 1 }, cardTitle: { color: colors.ink, fontWeight: "800", fontSize: 15 }, syncStatus: { fontSize: 10, fontWeight: "800" }, row: { flexDirection: "row", alignItems: "center", gap: 12 }, code: { backgroundColor: colors.tealSoft, borderRadius: 10, padding: 9 }, codeText: { color: colors.teal, fontWeight: "800", fontSize: 12 }, subject: { color: colors.ink, fontWeight: "800", fontSize: 15 }, details: { flexDirection: "row", justifyContent: "space-between", marginVertical: 14 }, list: { gap: 12, paddingBottom: 20 }, classCard: { borderRadius: 14, backgroundColor: colors.white }, empty: { borderRadius: 14, backgroundColor: colors.white } });

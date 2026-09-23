@@ -332,6 +332,27 @@ export async function getTodayOfferings(facultyId: string): Promise<any[]> {
   ]);
 }
 
+export async function getFacultyOfferings(facultyId: string): Promise<any[]> {
+  if (isWeb) return [...webOfferings.values()].filter((offering) => offering.facultyId === facultyId);
+  await initDb();
+  return await db.getAllAsync(`SELECT * FROM offerings WHERE facultyId = ? ORDER BY subjectCode`, [
+    facultyId,
+  ]);
+}
+
+export async function getAttendanceHistory(facultyId: string): Promise<any[]> {
+  if (isWeb) {
+    return [...webAttendance.values()]
+      .filter((record) => record.facultyId === facultyId)
+      .sort((left, right) => right.date.localeCompare(left.date));
+  }
+  await initDb();
+  return await db.getAllAsync(
+    `SELECT * FROM attendance WHERE facultyId = ? ORDER BY date DESC, updatedAt DESC`,
+    [facultyId],
+  );
+}
+
 export async function getTotalStudentsForFaculty(facultyId: string): Promise<number> {
   if (isWeb) {
     const studentIds = new Set<string>();

@@ -181,3 +181,28 @@ export async function saveAttendanceBulk(
     body: JSON.stringify({ records }),
   });
 }
+
+export interface AttendanceHistoryRecord {
+  id: string;
+  studentId: string;
+  subjectOfferingId: string;
+  date: string;
+  time?: string;
+  status: "present" | "absent" | "late" | "excused";
+  updatedAt?: number;
+  studentName?: string;
+  subjectCode?: string;
+  subjectTitle?: string;
+  schedule?: string;
+  room?: string;
+  sectionName?: string;
+}
+
+export async function fetchAttendanceHistory(
+  subjectOfferingId?: string,
+): Promise<AttendanceHistoryRecord[]> {
+  const query = subjectOfferingId
+    ? `?subjectOfferingId=${encodeURIComponent(subjectOfferingId)}`
+    : "";
+  return request<AttendanceHistoryRecord[]>(`/api/attendance${query}`);
+}
