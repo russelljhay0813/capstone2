@@ -40,7 +40,7 @@ This repository contains the PIAT Academic Management System, a multi-platform a
 
 ## Backend and data seeding
 
-- The backend uses SQLite and stores data in `backend/bwest.db`.
+- The backend uses SQLite and stores data in `backend/piat.db`.
 - The relational system-test dataset can be seeded using:
   ```bash
    npm run seed:test
