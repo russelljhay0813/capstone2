@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { Surface, Text } from "react-native-paper";
 import { usePathname, useRouter } from "expo-router";
 import { useSyncStore } from "../lib/sync-store";
+import { PiatLogo } from "./PiatLogo";
 
 export const colors = {
   ink: "#18324B",
@@ -43,7 +44,7 @@ export function MobileShell({ children, title, subtitle }: { children: ReactNode
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
-        <View style={styles.brandMark}><Text style={styles.brandText}>PIAT</Text></View>
+        <PiatLogo size={42} style={styles.brandMark} />
         <View style={styles.heading}>
           <Text style={styles.title}>{title}</Text>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -73,8 +74,7 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.canvas },
   topBar: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 14, backgroundColor: colors.white, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: 1, borderBottomColor: colors.line },
-  brandMark: { width: 42, height: 42, borderRadius: 12, backgroundColor: colors.ink, alignItems: "center", justifyContent: "center" },
-  brandText: { color: colors.white, fontWeight: "800", fontSize: 12 },
+  brandMark: { borderRadius: 12, backgroundColor: "transparent" },
   heading: { flex: 1 },
   title: { color: colors.ink, fontSize: 20, fontWeight: "800" },
   subtitle: { color: colors.muted, marginTop: 2, fontSize: 12 },

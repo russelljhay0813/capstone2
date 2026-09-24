@@ -169,9 +169,11 @@ function LoginPage() {
         className="w-full max-w-md"
       >
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-2xl font-semibold text-primary-foreground shadow-lg">
-            PIAT
-          </div>
+          <img
+            src="/piat-logo.svg"
+            alt="PIAT logo"
+            className="mx-auto mb-4 h-16 w-16 rounded-full border border-primary/20 bg-white object-cover shadow-lg"
+          />
           <h1 className="font-heading text-3xl font-semibold text-foreground">
             PIAT Academic Management System
           </h1>

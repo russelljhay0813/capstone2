@@ -234,9 +234,11 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 border-b border-border/70 bg-background/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <a href="#home" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-              PIAT
-            </div>
+            <img
+              src="/piat-logo.svg"
+              alt="PIAT logo"
+              className="h-10 w-10 rounded-full border border-primary/20 bg-white/70 object-cover shadow-sm"
+            />
             <div>
               <p className="font-heading text-sm font-semibold">PIAT</p>
               <p className="text-xs text-muted-foreground">Academic Management System</p>
