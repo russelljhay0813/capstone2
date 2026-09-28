@@ -15,7 +15,12 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { emailExists, submitRegistration } from "@/lib/registrations-store";
-import { fetchAcademicStructure, fetchPrograms, type StudentRegistration } from "@/lib/api";
+import {
+  fetchAcademicStructure,
+  fetchPrograms,
+  fetchStudentById,
+  type StudentRegistration,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { YEAR_LEVELS, SEMESTERS } from "@/lib/subjects-store";
 import { fetchBarangays, fetchCities, fetchProvinces, fetchRegions, type LocationOption } from "@/lib/locations";
@@ -88,6 +93,7 @@ function RegisterPage() {
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
   const [submissionMessage, setSubmissionMessage] = useState<string>("");
+  const [submissionError, setSubmissionError] = useState("");
   const [programs, setPrograms] = useState<string[]>([]);
   const [academicStructure, setAcademicStructure] = useState({
     academicYears: [] as string[],
@@ -140,8 +146,7 @@ function RegisterPage() {
   // Fetch the student's existing record if they already have one
   useEffect(() => {
     if (user?.studentId) {
-      fetch(`/api/students/${encodeURIComponent(user.studentId)}`)
-        .then((response) => (response.ok ? response.json() : null))
+      fetchStudentById(user.studentId, user.token)
         .then((record) => {
           if (record) {
             setStudentRecord(record);
@@ -188,7 +193,7 @@ function RegisterPage() {
         })
         .catch(() => undefined);
     }
-  }, [user?.studentId]);
+  }, [form, navigate, user?.studentId, user?.token]);
 
   useEffect(() => {
     Promise.all([fetchPrograms(), fetchAcademicStructure()])
@@ -236,14 +241,6 @@ function RegisterPage() {
       setBarangays([]);
       if (option) fetchBarangays(option.code).then(setBarangays).catch(() => setBarangays([]));
     }, [cities, selectedCity]);
-
-  const watchAll = form.watch();
-
-  useEffect(() => {
-    if (step === 4 && previewData) {
-      setPreviewData({ ...watchAll });
-    }
-  }, [step, watchAll]);
 
   const validateStep = async (currentStep: number) => {
     let isValid = false;
@@ -306,7 +303,7 @@ function RegisterPage() {
   };
 
   const handleSubmit = async () => {
-    const data = form.getValues();
+    setSubmissionError("");
     if (!user?.studentId) {
       form.setError("email", {
         message: "Your student account could not be identified. Please sign in again.",
@@ -314,15 +311,14 @@ function RegisterPage() {
       return;
     }
 
-    if (
-      studentRecord?.email &&
-      studentRecord.email !== data.email &&
-      (await emailExists(data.email || ""))
-    ) {
-      form.setError("email", { message: "This email is already registered" });
-      return;
+    for (const validationStep of [1, 2, 3]) {
+      if (!(await validateStep(validationStep))) {
+        setStep(validationStep);
+        return;
+      }
     }
 
+    const data = form.getValues();
     setIsLoading(true);
     try {
       // Build payload: personal and contact fields, plus academic info for enrollment
@@ -376,6 +372,10 @@ function RegisterPage() {
         return;
       }
       setSubmitted(true);
+    } catch {
+      setSubmissionError(
+        "Registration could not be submitted. Please check your information and try again.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -628,8 +628,8 @@ function RegisterPage() {
                   </Field>
                   <Field label="Semester *" error={form.formState.errors.semester?.message}>
                     <select {...form.register("semester")} className="input">
-                      {(academicStructure.semesters.length ? academicStructure.semesters : SEMESTERS).map((s) => (
-                        <option key={s} value={s}>
+                      {(academicStructure.semesters.length ? academicStructure.semesters : SEMESTERS).map((s, index) => (
+                        <option key={`${s}-${index}`} value={s}>
                           {s}
                         </option>
                       ))}
@@ -693,6 +693,15 @@ function RegisterPage() {
             </motion.div>
           </AnimatePresence>
 
+          {submissionError && (
+            <p
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              {submissionError}
+            </p>
+          )}
+
           <div className="flex items-center justify-between pt-2">
             <Link
               to="/"
@@ -722,9 +731,10 @@ function RegisterPage() {
                 <button
                   type="button"
                   onClick={handleSubmit}
+                  disabled={isLoading}
                   className="rounded-lg bg-success px-6 py-2.5 text-sm font-medium text-success-foreground hover:opacity-90"
                 >
-                  Submit Registration
+                  {isLoading ? "Submitting..." : "Submit Registration"}
                 </button>
               )}
             </div>

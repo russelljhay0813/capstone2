@@ -27,7 +27,7 @@ export default function DashboardScreen() {
 
   return (
     <MobileShell title="Dashboard" subtitle={`Good morning, ${profile?.firstName ?? "Faculty"}`}>
-      <View style={styles.welcome}><Text style={styles.welcomeTitle}>Ready for today’s classes?</Text><Text style={styles.caption}>Keep attendance accurate, even when you are offline.</Text></View>
+      <View style={styles.welcome}><Text style={styles.welcomeTitle}>Student Attendance</Text><Text style={styles.caption}>Keep attendance accurate, even when you are offline.</Text></View>
       <View style={styles.stats}><Stat label="Assigned subjects" value={offerings.length} /><Stat label="Students" value={studentCount} /><Stat label="Pending sync" value={sync.pendingCount} /></View>
       <Card style={styles.syncCard}><Card.Content><View style={styles.syncRow}><View style={styles.flex}><Text style={styles.cardTitle}>{sync.isConnected ? "All systems online" : "Offline mode active"}</Text><Text style={styles.caption}>{sync.isConnected ? "Attendance will sync automatically." : "Attendance will sync when internet returns."}</Text></View><Text style={[styles.syncStatus, { color: sync.isConnected ? colors.green : colors.amber }]}>{sync.isConnected ? "ONLINE" : "OFFLINE"}</Text></View>{sync.pendingCount > 0 ? <Button mode="text" compact textColor={colors.teal} onPress={sync.syncPendingAttendance} loading={sync.isSyncing}>Sync pending attendance</Button> : null}</Card.Content></Card>
       <SectionLabel>Today’s classes</SectionLabel>
