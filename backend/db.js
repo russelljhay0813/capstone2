@@ -929,7 +929,7 @@ export async function initDb(db) {
       db,
       `INSERT INTO users (id, userId, username, email, password, firstName, lastName, role, status, createdAt, temporaryPassword)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [adminId, "ADM-00001", "admin", "admin@bwest.edu.ph", adminPassword, "System", "Administrator", "admin", "active", now, "admin123"]
+      [adminId, "ADM-00001", "admin", "admin@piat.edu.ph", adminPassword, "System", "Administrator", "admin", "active", now, "admin123"]
     );
     const defaultUsers = [
       { id: crypto.randomUUID(), userId: "REG-00001", username: "registrar", email: "registrar@example.com", pass: "password", fname: "Maria", lname: "Santos", role: "registrar" },

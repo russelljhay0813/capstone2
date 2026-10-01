@@ -2871,7 +2871,7 @@ app.post("/api/students/:studentId/finalize-records", requireRole("admin", "regi
 // ---------------------------------------------------------------------
 function startServer(port) {
   const server = app.listen(port, () => {
-    console.log(`BWEST backend listening on http://localhost:${port}`);
+    console.log(`PIAT backend listening on http://localhost:${port}`);
   });
 
   server.on("error", (err) => {
