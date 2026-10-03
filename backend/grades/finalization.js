@@ -2,7 +2,7 @@
  * Builds a query to find grades eligible for finalization.
  *
  * @param {Object} student - Student object (must contain `id` UUID)
- * @param {Object} filters - Optional filters: period, subjectId, academicYear, semester
+ * @param {Object} filters - Optional filters: period, subjectOfferingId, academicYear, semester
  * @returns {{ sql: string, params: Array }} SQL query and parameters
  */
 export function buildGradeFinalizationQuery(student, filters = {}) {
@@ -17,9 +17,9 @@ export function buildGradeFinalizationQuery(student, filters = {}) {
     params.push(String(filters.period));
   }
 
-  if (filters.subjectId) {
-    conditions.push("sub.id = ?");
-    params.push(String(filters.subjectId));
+  if (filters.subjectOfferingId) {
+    conditions.push("so.id = ?");
+    params.push(String(filters.subjectOfferingId));
   }
 
   const effectiveAcademicYear = filters.academicYear ?? student?.academicYear;

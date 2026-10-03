@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "test:e2e": "playwright test",
     "mobile:start": "npm --prefix mobile_build exec -- expo start",
     "build": "vite build",
     "build:dev": "vite build --mode development",
@@ -82,6 +83,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.4",
+    "@playwright/test": "^1.58.2",
     "eslint": "^9.32.0",
     "eslint-config-prettier": "^10.1.1",
     "eslint-plugin-prettier": "^5.2.6",

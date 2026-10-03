@@ -25,6 +25,14 @@ This repository contains the PIAT Academic Management System, a multi-platform a
    ```bash
    cd backend
    npm install
+   ```
+   Create `backend/.env` from `backend/.env.example` and set `JWT_SECRET` to a random value of at least 32 characters. In PowerShell:
+   ```powershell
+   Copy-Item .env.example .env
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+   Copy the generated value into `JWT_SECRET` in `.env`, then start the backend:
+   ```bash
    npm start
    ```
 3. Start the web frontend:

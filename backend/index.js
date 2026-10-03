@@ -1,26 +1,29 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { openDb, initDb, run, all, get, withTransaction } from "./db.js";
 import { normalizeStudentPayload, normalizeUserPayload } from "./students/normalize.js";
-import { inferReenrollmentTarget, resolveProgramIdForStudent } from "./enrollment/reenrollment.js";
+import {
+  getSemesterSequence,
+  inferReenrollmentTarget,
+  resolveProgramIdForStudent,
+} from "./enrollment/reenrollment.js";
 import { resolveAutoApprovalStatus, validateRegistrationPayload } from "./registration/workflow.js";
 import { resolveRequestIdentity } from "./auth/identity.js";
 import { buildAttendanceRecordPayload } from "./attendance/record.js";
 import { buildGradeFinalizationQuery } from "./grades/finalization.js";
 
-import { EventEmitter } from "node:events";
-
 const app = express();
 const PORT = process.env.PORT || 4000;
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 8;
-const JWT_SECRET = process.env.JWT_SECRET || "piat_mobile_secret";
+const JWT_SECRET = String(process.env.JWT_SECRET || "").trim();
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error("JWT_SECRET environment variable is required and must be at least 32 characters.");
+}
 const loginRateLimitStore = new Map();
-const gradeEventBus = new EventEmitter();
-const attendanceEventBus = new EventEmitter();
-const enrollmentEventBus = new EventEmitter();
 // ---------------------------------------------------------------------
 // Helpers (unchanged)
 // ---------------------------------------------------------------------
@@ -317,8 +320,14 @@ function getClientKey(req) {
   return forwarded.split(",")[0].trim() || req.ip || req.socket.remoteAddress || "unknown";
 }
 
+function getLoginRateLimitKey(req) {
+  const clientKey = getClientKey(req);
+  const identifier = String(req.body?.email ?? req.body?.username ?? req.body?.identifier ?? "").trim().toLowerCase();
+  return identifier ? `${clientKey}:${identifier}` : clientKey;
+}
+
 function applyRateLimit(req, res, next) {
-  const key = getClientKey(req);
+  const key = getLoginRateLimitKey(req);
   const now = Date.now();
   const entries = loginRateLimitStore.get(key) || [];
   const recent = entries.filter((timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS);
@@ -333,18 +342,6 @@ function applyRateLimit(req, res, next) {
 }
 
 function requireRole(...allowedRoles) {
-  return (req, res, next) => {
-    const identity = getRequestIdentity(req);
-    const normalizedRole = String(identity.role || "").toLowerCase();
-    if (!allowedRoles.includes(normalizedRole)) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    req.userContext = { ...identity, role: normalizedRole };
-    next();
-  };
-}
-
-function requireJwtRole(...allowedRoles) {
   return (req, res, next) => {
     const authHeader = req.get("Authorization") || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
@@ -366,17 +363,32 @@ function requireJwtRole(...allowedRoles) {
   };
 }
 
+function requireJwtRole(...allowedRoles) {
+  return requireRole(...allowedRoles);
+}
+
 function requireSelfOrRole(resourceParamName, ...allowedRoles) {
   return (req, res, next) => {
-    const { role, userId, studentId } = getRequestIdentity(req);
-    const requested = req.params[resourceParamName];
-    const isSelf =
-      role === "student" && requested && (userId === requested || studentId === requested);
-    if (!allowedRoles.includes(role) && !isSelf) {
-      return res.status(403).json({ error: "Forbidden" });
+    const authHeader = req.get("Authorization") || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!token) return res.status(401).json({ error: "Authentication required" });
+
+    try {
+      const payload = jwt.verify(token, JWT_SECRET);
+      const role = String(payload.role || "").toLowerCase();
+      const userId = String(payload.id || "");
+      const studentId = String(payload.studentId || "");
+      const requested = req.params[resourceParamName];
+      const isSelf =
+        role === "student" && requested && (userId === requested || studentId === requested);
+      if (!allowedRoles.includes(role) && !isSelf) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      req.userContext = { role, userId, studentId };
+      return next();
+    } catch {
+      return res.status(401).json({ error: "Invalid or expired token" });
     }
-    req.userContext = { role, userId, studentId };
-    next();
   };
 }
 
@@ -685,8 +697,8 @@ async function getStudentCurrentContext(studentUuid) {
      JOIN semesters sem ON sem.id = o.semesterId
      JOIN sections sec ON sec.id = o.sectionId
      JOIN programs p ON p.id = sec.programId
-     WHERE e.studentId = ?
-     ORDER BY e.enrolledAt DESC
+     WHERE e.studentId = ? AND e.status = 'enrolled'
+     ORDER BY a.code DESC, sem.sequence DESC, e.enrolledAt DESC, o.id DESC
      LIMIT 1`,
     [studentUuid],
   );
@@ -1080,13 +1092,19 @@ app.post("/api/sections", requireRole("admin", "registrar"), async (req, res) =>
 app.get("/api/students/eligible-for-reenrollment", requireJwtRole("admin", "registrar"), async (_req, res) => {
   const rows = await all(
     db,
-    `SELECT DISTINCT s.studentId
+    `SELECT DISTINCT s.id, s.studentId, s.firstName, s.middleName, s.suffix, s.lastName
      FROM students s
      JOIN enrollments e ON e.studentId = s.id
      WHERE s.status = 'approved' AND e.status = 'enrolled'
      ORDER BY s.studentId`,
   );
-  res.json(rows);
+  const students = await Promise.all(
+    rows.map(async (student) => ({
+      ...student,
+      ...(await getStudentCurrentContext(student.id)),
+    })),
+  );
+  res.json(students);
 });
 
 app.get("/api/students", requireRole("admin", "registrar"), async (req, res) => {
@@ -1098,7 +1116,9 @@ app.get("/api/students", requireRole("admin", "registrar"), async (req, res) => 
   const reconciledRows = await Promise.all(
     rows.map(async (row) => {
       const refreshed = await reconcileStudentRegistrationState(row.studentId);
-      return sanitizeStudentRecord(refreshed || row);
+      const student = refreshed || row;
+      const context = await getStudentCurrentContext(student.id);
+      return { ...sanitizeStudentRecord(student), ...context };
     }),
   );
   const result = paginateResults(reconciledRows, req.query.page, req.query.limit);
@@ -1572,6 +1592,7 @@ app.get("/api/enrollments", requireRole("admin", "registrar", "student", "facult
        sub.code AS subjectCode, sub.title AS subjectTitle,
        a.code AS academicYear,
        sem.name AS semester,
+      p.name AS programName,
        sec.name AS sectionName,
        o.schedule,
        o.room,
@@ -1584,6 +1605,7 @@ app.get("/api/enrollments", requireRole("admin", "registrar", "student", "facult
      JOIN academicYears a ON a.id = o.academicYearId
      JOIN semesters sem ON sem.id = o.semesterId
      JOIN sections sec ON sec.id = o.sectionId
+    LEFT JOIN programs p ON p.id = sec.programId
      LEFT JOIN faculty f ON f.id = o.facultyId
      LEFT JOIN users u ON u.id = f.userId
      WHERE ${where}
@@ -1635,11 +1657,6 @@ app.post(
         [enrollment.id, enrollment.studentId, enrollment.subjectOfferingId, enrollment.status, enrollment.enrolledAt],
       );
       created.push(enrollment);
-      enrollmentEventBus.emit("enrollments-changed", {
-        type: "created",
-        studentId: studentUuid,
-        offeringId: off.id,
-      });
     }
 
     await createActivityLog(
@@ -1656,8 +1673,8 @@ app.post(
 // ---------------------------------------------------------------------
 // GRADES (using subjectOfferingId)
 // ---------------------------------------------------------------------
-app.get("/api/grades", async (req, res) => {
-  const identity = getRequestIdentity(req);
+app.get("/api/grades", requireRole("admin", "faculty", "registrar", "student"), async (req, res) => {
+  const identity = req.userContext;
   const { subjectOfferingId } = req.query;
   const requestedStudentId = req.query.studentId ? String(req.query.studentId) : null;
   const isSelf =
@@ -1758,7 +1775,6 @@ app.post("/api/grades", requireRole("admin", "faculty"), async (req, res) => {
       ],
     );
     const updated = await get(db, "SELECT * FROM grades WHERE id = ?", [existing.id]);
-    gradeEventBus.emit("grades-changed", { type: "updated", record: updated });
     await createActivityLog(
       req.userContext.userId,
       req.userContext.role || "faculty",
@@ -1807,7 +1823,6 @@ app.post("/api/grades", requireRole("admin", "faculty"), async (req, res) => {
       entry.subjectOfferingId,
     );
   }
-  gradeEventBus.emit("grades-changed", { type: "created", record: entry });
   await createActivityLog(
     req.userContext.userId,
     req.userContext.role || "faculty",
@@ -1830,11 +1845,6 @@ app.delete("/api/grades", requireRole("admin", "faculty"), async (req, res) => {
     studentUuid,
     subjectOfferingId,
   ]);
-  gradeEventBus.emit("grades-changed", {
-    type: "deleted",
-    studentId,
-    subjectOfferingId,
-  });
   await createActivityLog(
     req.userContext.userId,
     req.userContext.role || "faculty",
@@ -1949,7 +1959,6 @@ app.post("/api/attendance", requireJwtRole("admin", "faculty"), async (req, res)
       [status, time || null, Date.now(), existing.id],
     );
     const updated = await get(db, "SELECT * FROM attendance WHERE id = ?", [existing.id]);
-    attendanceEventBus.emit("attendance-changed", { type: "updated", record: updated });
     await createActivityLog(
       req.userContext.userId,
       req.userContext.role || "faculty",
@@ -1976,7 +1985,6 @@ app.post("/api/attendance", requireJwtRole("admin", "faculty"), async (req, res)
     [entry.id, entry.studentId, entry.subjectOfferingId, entry.date, entry.time, entry.status, entry.updatedAt],
   );
   const created = await get(db, "SELECT * FROM attendance WHERE id = ?", [entry.id]);
-  attendanceEventBus.emit("attendance-changed", { type: "created", record: created });
   await createActivityLog(
     req.userContext.userId,
     req.userContext.role || "faculty",
@@ -2036,7 +2044,6 @@ app.post("/api/attendance/bulk", requireJwtRole("admin", "faculty"), async (req,
         [status, time || null, Date.now(), existing.id],
       );
       const updated = await get(db, "SELECT * FROM attendance WHERE id = ?", [existing.id]);
-      attendanceEventBus.emit("attendance-changed", { type: "updated", record: updated });
       results.push({ localId, id: existing.id, status: "updated" });
     } else {
       const entry = {
@@ -2055,7 +2062,6 @@ app.post("/api/attendance/bulk", requireJwtRole("admin", "faculty"), async (req,
         [entry.id, entry.studentId, entry.subjectOfferingId, entry.date, entry.time, entry.status, entry.updatedAt],
       );
       const created = await get(db, "SELECT * FROM attendance WHERE id = ?", [entry.id]);
-      attendanceEventBus.emit("attendance-changed", { type: "created", record: created });
       results.push({ localId, id: entry.id, status: "created" });
     }
   }
@@ -2203,20 +2209,8 @@ app.delete("/api/curriculum/:id", requireRole("admin", "registrar"), async (req,
 });
 
 // ---------------------------------------------------------------------
-// STUDENT ELIGIBILITY / RE-ENROLLMENT (adapted)
+// STUDENT ELIGIBILITY / RE-ENROLLMENT
 // ---------------------------------------------------------------------
-app.get("/api/students/eligible-for-reenrollment", async (_req, res) => {
-  const rows = await all(
-    db,
-    `SELECT s.studentId, s.firstName, s.lastName
-     FROM students s
-     WHERE s.status = 'approved'
-       AND EXISTS (SELECT 1 FROM enrollments e WHERE e.studentId = s.id AND e.status = 'enrolled')
-       AND NOT EXISTS (SELECT 1 FROM grades g WHERE g.studentId = s.id AND g.status = 'draft')`,
-  );
-  res.json(rows);
-});
-
 app.post("/api/students/:studentId/reenroll", async (req, res) => {
   const { studentId } = req.params;
   const student = await get(db, "SELECT id, studentId FROM students WHERE studentId = ?", [studentId]);
@@ -2250,8 +2244,25 @@ app.post("/api/students/:studentId/reenroll", async (req, res) => {
   const ay = await get(db, "SELECT id FROM academicYears WHERE code = ?", [target.academicYear]);
   if (!ay) return res.status(400).json({ error: "Academic year not found" });
 
-  const sem = await get(db, "SELECT id FROM semesters WHERE name = ? AND academicYearId = ?", [target.semester, ay.id]);
+  const semesterSequence = getSemesterSequence(target.semester);
+  if (!semesterSequence) {
+    return res.status(400).json({ error: "Unsupported semester" });
+  }
+  const sem = await get(
+    db,
+    "SELECT id FROM semesters WHERE sequence = ? AND academicYearId = ?",
+    [semesterSequence, ay.id],
+  );
   if (!sem) return res.status(400).json({ error: "Semester not found" });
+
+  const curriculumSubjects = await all(
+    db,
+    "SELECT subjectId FROM curriculum WHERE programId = ? AND yearLevel = ? AND semester = ?",
+    [programId, target.yearLevel, target.semester],
+  );
+  if (curriculumSubjects.length === 0) {
+    return res.status(400).json({ error: "No curriculum found for this year/semester" });
+  }
 
   let section = await get(
     db,
@@ -2259,9 +2270,9 @@ app.post("/api/students/:studentId/reenroll", async (req, res) => {
     [programId, target.yearLevel, sem.id, ay.id],
   );
   if (!section) {
-    // Create default section
     const sectionId = crypto.randomUUID();
-    const sectionCode = `${target.yearLevel.slice(0,2)}-${target.semester.slice(0,2)}-${programId.slice(0,4)}`;
+    const academicYearToken = target.academicYear.replace(/[^0-9]/g, "");
+    const sectionCode = `${target.yearLevel.slice(0, 2)}-${semesterSequence}-${academicYearToken}-${programId.slice(0, 4)}`;
     await run(
       db,
       `INSERT INTO sections (id, code, name, programId, yearLevel, semesterId, academicYearId, status, createdAt)
@@ -2281,32 +2292,27 @@ app.post("/api/students/:studentId/reenroll", async (req, res) => {
     section = { id: sectionId };
   }
 
-  // Get all subjects for this curriculum
-  const curriculumSubjects = await all(
+  const existingOfferings = await all(
     db,
-    "SELECT subjectId FROM curriculum WHERE programId = ? AND yearLevel = ? AND semester = ?",
-    [programId, target.yearLevel, target.semester],
+    "SELECT id, subjectId FROM subjectOfferings WHERE sectionId = ? AND academicYearId = ? AND semesterId = ?",
+    [section.id, ay.id, sem.id],
   );
-  if (curriculumSubjects.length === 0) {
-    return res.status(400).json({ error: "No curriculum found for this year/semester" });
-  }
-
-  // Find offerings for each subject in the section
-  const offerings = [];
+  const offeringsBySubject = new Map(existingOfferings.map((offering) => [offering.subjectId, offering.id]));
   for (const cs of curriculumSubjects) {
-    const offering = await get(
-      db,
-      "SELECT id FROM subjectOfferings WHERE subjectId = ? AND sectionId = ? AND academicYearId = ? AND semesterId = ?",
-      [cs.subjectId, section.id, ay.id, sem.id],
-    );
-    if (offering) {
-      offerings.push(offering.id);
-    } else {
-      // Optionally create offering automatically (but we'll skip for now)
-      console.warn(`No offering found for subject ${cs.subjectId} in section ${section.id}`);
+    if (!offeringsBySubject.has(cs.subjectId)) {
+      const offeringId = crypto.randomUUID();
+      await run(
+        db,
+        `INSERT INTO subjectOfferings
+          (id, subjectId, academicYearId, semesterId, sectionId, schedule, room, status, createdAt)
+         VALUES (?, ?, ?, ?, ?, 'TBA', 'TBA', 'active', ?)`,
+        [offeringId, cs.subjectId, ay.id, sem.id, section.id, Date.now()],
+      );
+      offeringsBySubject.set(cs.subjectId, offeringId);
     }
   }
 
+  const offerings = curriculumSubjects.map((subject) => offeringsBySubject.get(subject.subjectId));
   if (offerings.length === 0) {
     return res.status(400).json({ error: "No subject offerings available for re-enrollment" });
   }
@@ -2525,7 +2531,7 @@ app.patch("/api/users/:id/password", requireRole("admin"), async (req, res) => {
   res.json(updated);
 });
 
-app.post("/api/users/login", async (req, res) => {
+app.post("/api/users/login", applyRateLimit, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
   const user = await get(
@@ -2536,7 +2542,9 @@ app.post("/api/users/login", async (req, res) => {
      WHERE LOWER(u.email) = LOWER(?) OR LOWER(u.username) = LOWER(?)`,
     [email, email],
   );
-  if (!user || !verifyPassword(password, user.password)) return res.status(401).json({ error: "Invalid credentials" });
+  if (!user || !verifyPassword(password, user.password)) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
   res.json({ ...sanitizeUserRecord(user), token: generateJwtToken(user) });
 });
 
@@ -2544,32 +2552,42 @@ app.post("/api/users/login", async (req, res) => {
 // NOTIFICATIONS
 // ---------------------------------------------------------------------
 app.get("/api/notifications", requireRole("admin", "faculty", "registrar", "student"), async (req, res) => {
-  const userId = req.query.userId ? String(req.query.userId) : null;
-  if (!userId) return res.status(400).json({ error: "userId is required" });
+  const userId = req.query.userId ? String(req.query.userId) : req.userContext.userId;
+  if (!userId || userId !== req.userContext.userId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const rows = await all(db, "SELECT * FROM notifications WHERE userId = ? ORDER BY createdAt DESC", [userId]);
   res.json(rows);
 });
 
-app.post("/api/notifications", async (req, res) => {
+app.post("/api/notifications", requireRole("admin", "faculty", "registrar", "student"), async (req, res) => {
   const { userId, type, title, message, relatedId } = req.body;
   if (!userId || !type || !title || !message) {
     return res.status(400).json({ error: "userId, type, title, and message are required" });
+  }
+  if (String(userId) !== String(req.userContext.userId)) {
+    return res.status(403).json({ error: "Forbidden" });
   }
   const notification = await createNotificationRecord(userId, type, title, message, relatedId);
   res.status(201).json(notification);
 });
 
-app.patch("/api/notifications/:id/read", async (req, res) => {
+app.patch("/api/notifications/:id/read", requireRole("admin", "faculty", "registrar", "student"), async (req, res) => {
   const notification = await get(db, "SELECT * FROM notifications WHERE id = ?", [req.params.id]);
   if (!notification) return res.status(404).json({ error: "Notification not found" });
+  if (String(notification.userId) !== String(req.userContext.userId)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   await run(db, "UPDATE notifications SET read = 1 WHERE id = ?", [req.params.id]);
   const updated = await get(db, "SELECT * FROM notifications WHERE id = ?", [req.params.id]);
   res.json(updated);
 });
 
-app.delete("/api/notifications", async (req, res) => {
-  const userId = req.query.userId ? String(req.query.userId) : null;
-  if (!userId) return res.status(400).json({ error: "userId is required" });
+app.delete("/api/notifications", requireRole("admin", "faculty", "registrar", "student"), async (req, res) => {
+  const userId = req.query.userId ? String(req.query.userId) : req.userContext.userId;
+  if (!userId || userId !== req.userContext.userId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   await run(db, "DELETE FROM notifications WHERE userId = ?", [userId]);
   res.status(204).end();
 });
@@ -2703,11 +2721,95 @@ app.get("/api/meta/academic-structure", async (_req, res) => {
 // ---------------------------------------------------------------------
 // DASHBOARD
 // ---------------------------------------------------------------------
+const ELIGIBLE_STUDENT_WHERE =
+  "s.status IN ('approved', 'active') AND u.role = 'student' AND u.status = 'active'";
+const ANALYTICS_PROGRAM_NAMES = [
+  "Diploma in Hospitality Services and Technology",
+  "Diploma in Tourism and Travel Services",
+  "Diploma in Multimedia Arts and Design",
+  "Diploma in Industrial Education (Major in Hotel and Restaurant Services)",
+  "Diploma in Industrial Education (Major in Multimedia Arts and Design)",
+];
+
+async function getCoreDashboardCounts() {
+  const counts = await get(
+    db,
+    `SELECT
+       (SELECT COUNT(DISTINCT s.id)
+        FROM students s JOIN users u ON u.id = s.userId
+        WHERE ${ELIGIBLE_STUDENT_WHERE}) AS totalStudents,
+       (SELECT COUNT(DISTINCT f.id)
+        FROM faculty f
+        JOIN users u ON u.id = f.userId
+        WHERE f.status = 'active' AND u.role = 'faculty' AND u.status = 'active') AS activeFaculty,
+       (SELECT COUNT(DISTINCT u.id)
+        FROM users u
+        WHERE u.role = 'registrar' AND u.status = 'active') AS activeRegistrars,
+       (SELECT COUNT(DISTINCT o.id)
+        FROM subjectOfferings o
+        WHERE o.status = 'active') AS activeOfferings`,
+  );
+
+  return {
+    totalStudents: Number(counts?.totalStudents || 0),
+    activeFaculty: Number(counts?.activeFaculty || 0),
+    activeRegistrars: Number(counts?.activeRegistrars || 0),
+    activeOfferings: Number(counts?.activeOfferings || 0),
+  };
+}
+
+async function getStudentsByProgram() {
+  const placeholders = ANALYTICS_PROGRAM_NAMES.map(() => "(?)").join(", ");
+  const excludedProgramPlaceholders = ANALYTICS_PROGRAM_NAMES.map(() => "?").join(", ");
+  return all(
+    db,
+    `WITH eligible_students AS (
+       SELECT DISTINCT s.id
+       FROM students s
+       JOIN users u ON u.id = s.userId
+       WHERE ${ELIGIBLE_STUDENT_WHERE}
+     ),
+     latest_student_program AS (
+       SELECT studentId, programId
+       FROM (
+         SELECT
+           e.studentId,
+           sec.programId,
+           ROW_NUMBER() OVER (
+             PARTITION BY e.studentId
+             ORDER BY ay.code DESC, sem.sequence DESC, e.enrolledAt DESC, o.id DESC
+           ) AS rowNumber
+         FROM enrollments e
+         JOIN subjectOfferings o ON o.id = e.subjectOfferingId
+         JOIN academicYears ay ON ay.id = o.academicYearId
+         JOIN semesters sem ON sem.id = o.semesterId
+         LEFT JOIN sections sec ON sec.id = o.sectionId
+         WHERE e.status = 'enrolled'
+       )
+       WHERE rowNumber = 1
+     ),
+     known_programs(name) AS (VALUES ${placeholders})
+     SELECT kp.name AS program, COUNT(DISTINCT es.id) AS count
+     FROM known_programs kp
+     LEFT JOIN programs p ON p.name = kp.name
+     LEFT JOIN latest_student_program sp ON sp.programId = p.id
+     LEFT JOIN eligible_students es ON es.id = sp.studentId
+     GROUP BY kp.name
+     UNION ALL
+     SELECT 'Unassigned' AS program, COUNT(DISTINCT es.id) AS count
+     FROM eligible_students es
+     LEFT JOIN latest_student_program sp ON sp.studentId = es.id
+     LEFT JOIN programs p ON p.id = sp.programId
+     WHERE p.id IS NULL OR p.name NOT IN (${excludedProgramPlaceholders})
+     ORDER BY program`,
+    [...ANALYTICS_PROGRAM_NAMES, ...ANALYTICS_PROGRAM_NAMES],
+  );
+}
+
 app.get("/api/dashboard/registrar", requireRole("admin", "registrar"), async (req, res) => {
   const pendingApplications = await get(db, "SELECT COUNT(*) as cnt FROM students WHERE status = 'pending'");
   const approvedStudents = await get(db, "SELECT COUNT(*) as cnt FROM students WHERE status = 'approved'");
-  const activeStudents = await get(db, "SELECT COUNT(*) as cnt FROM students WHERE status = 'active' OR status = 'approved'");
-  const totalSubjects = await get(db, "SELECT COUNT(*) as cnt FROM subjects");
+  const coreCounts = await getCoreDashboardCounts();
   const assignedFaculty = await get(db, "SELECT COUNT(*) as cnt FROM faculty");
   const programsOffered = await get(db, "SELECT COUNT(*) as cnt FROM programs WHERE status = 'active'");
   const eligibleReenrollment = await get(db, "SELECT COUNT(*) as cnt FROM students WHERE status = 'approved' AND EXISTS (SELECT 1 FROM enrollments e WHERE e.studentId = students.id AND e.status = 'enrolled')");
@@ -2721,8 +2823,8 @@ app.get("/api/dashboard/registrar", requireRole("admin", "registrar"), async (re
     pendingApplications: pendingApplications?.cnt || 0,
     approvedStudents: approvedStudents?.cnt || 0,
     pendingEnrollments: 0,
-    activeStudents: activeStudents?.cnt || 0,
-    totalSubjects: totalSubjects?.cnt || 0,
+    activeStudents: coreCounts.totalStudents,
+    totalSubjects: coreCounts.activeOfferings,
     assignedFaculty: assignedFaculty?.cnt || 0,
     programsOffered: programsOffered?.cnt || 0,
     eligibleReenrollment: eligibleReenrollment?.cnt || 0,
@@ -2735,28 +2837,35 @@ app.get("/api/dashboard/registrar", requireRole("admin", "registrar"), async (re
 });
 
 app.get("/api/dashboard/admin", requireJwtRole("admin"), async (_req, res) => {
-  const totalStudents = await get(
-    db,
-    "SELECT COUNT(DISTINCT id) AS cnt FROM students WHERE status IN ('approved', 'active')",
-  );
-  const activeFaculty = await get(
-    db,
-    "SELECT COUNT(DISTINCT f.id) AS cnt FROM faculty f JOIN users u ON u.id = f.userId WHERE u.status = 'active'",
-  );
-  const activeOfferings = await get(
-    db,
-    "SELECT COUNT(DISTINCT id) AS cnt FROM subjectOfferings WHERE status = 'active'",
-  );
+  const coreCounts = await getCoreDashboardCounts();
   const pendingApplications = await get(
     db,
     "SELECT COUNT(DISTINCT id) AS cnt FROM students WHERE status IN ('pending', 'submitted', 'under_review')",
   );
 
   res.json({
-    totalStudents: Number(totalStudents?.cnt || 0),
-    activeFaculty: Number(activeFaculty?.cnt || 0),
-    activeOfferings: Number(activeOfferings?.cnt || 0),
+    totalStudents: coreCounts.totalStudents,
+    activeFaculty: coreCounts.activeFaculty,
+    activeOfferings: coreCounts.activeOfferings,
     pendingApplications: Number(pendingApplications?.cnt || 0),
+  });
+});
+
+app.get("/api/dashboard/analytics", requireJwtRole("admin"), async (_req, res) => {
+  const [coreCounts, studentsByProgram] = await Promise.all([
+    getCoreDashboardCounts(),
+    getStudentsByProgram(),
+  ]);
+
+  res.json({
+    totalStudents: coreCounts.totalStudents,
+    activeFaculty: coreCounts.activeFaculty,
+    registrars: coreCounts.activeRegistrars,
+    subjectOfferings: coreCounts.activeOfferings,
+    studentsByProgram: studentsByProgram.map((row) => ({
+      program: row.program,
+      count: Number(row.count || 0),
+    })),
   });
 });
 
@@ -2764,8 +2873,16 @@ app.get("/api/dashboard/admin", requireJwtRole("admin"), async (_req, res) => {
 // REPORTS
 // ---------------------------------------------------------------------
 app.get("/api/reports/enrollment", requireJwtRole("admin", "registrar"), async (_req, res) => {
-  const enrollments = await all(db, "SELECT * FROM enrollments WHERE status = 'enrolled'");
-  const students = await all(db, "SELECT id, firstName, lastName, studentId FROM students WHERE status = 'approved'");
+  const enrollments = await all(
+    db,
+    `SELECT e.studentId, p.name AS program, sec.yearLevel, sem.name AS semester
+     FROM enrollments e
+     JOIN subjectOfferings o ON o.id = e.subjectOfferingId
+     LEFT JOIN sections sec ON sec.id = o.sectionId
+     LEFT JOIN programs p ON p.id = sec.programId
+     LEFT JOIN semesters sem ON sem.id = o.semesterId
+     WHERE e.status = 'enrolled'`,
+  );
   const report = {
     totalEnrolled: enrollments.length,
     byProgram: {},
@@ -2773,13 +2890,12 @@ app.get("/api/reports/enrollment", requireJwtRole("admin", "registrar"), async (
     bySemester: {},
   };
   for (const e of enrollments) {
-    const student = students.find((s) => s.id === e.studentId);
-    const offering = await get(db, `SELECT sec.yearLevel, sem.name as semester FROM subjectOfferings o JOIN sections sec ON sec.id = o.sectionId JOIN semesters sem ON sem.id = o.semesterId WHERE o.id = ?`, [e.subjectOfferingId]);
-    const program = student ? "Unknown" : "Unknown";
-    const year = offering?.yearLevel || "Unknown";
+    const program = e.program || "Unassigned";
+    const year = e.yearLevel || "Unknown";
+    const semester = e.semester || "Unknown";
     report.byProgram[program] = (report.byProgram[program] || 0) + 1;
     report.byYear[year] = (report.byYear[year] || 0) + 1;
-    report.bySemester[offering?.semester || "Unknown"] = (report.bySemester[offering?.semester || "Unknown"] || 0) + 1;
+    report.bySemester[semester] = (report.bySemester[semester] || 0) + 1;
   }
   res.json(report);
 });
@@ -2801,7 +2917,14 @@ app.get("/api/reports/faculty-load", requireJwtRole("admin", "registrar"), async
 });
 
 app.get("/api/reports/students", requireJwtRole("admin", "registrar"), async (_req, res) => {
-  const rows = await all(db, "SELECT studentId, firstName, lastName FROM students WHERE status = 'approved' ORDER BY lastName, firstName");
+  const rows = await all(
+    db,
+    `SELECT s.studentId, s.firstName, s.lastName
+     FROM students s
+     JOIN users u ON u.id = s.userId
+     WHERE ${ELIGIBLE_STUDENT_WHERE}
+     ORDER BY s.lastName, s.firstName`,
+  );
   res.json(rows);
 });
 
@@ -2845,12 +2968,47 @@ app.post("/api/clearances/:id/revoke", requireRole("admin", "registrar"), async 
 // ---------------------------------------------------------------------
 // STUDENT FINALIZE RECORDS
 // ---------------------------------------------------------------------
-app.post("/api/students/:studentId/finalize-records", requireRole("admin", "registrar"), async (req, res) => {
-  const { studentId } = req.params;
-  const student = await get(db, "SELECT id FROM students WHERE studentId = ?", [studentId]);
-  if (!student) return res.status(404).json({ error: "Student not found" });
-  res.json({ success: true, message: "Records finalized" });
-});
+app.post(
+  "/api/students/:studentId/finalize-records",
+  requireRole("admin", "registrar"),
+  async (req, res) => {
+    const { studentId } = req.params;
+    const { period, subjectOfferingId, academicYear, semester } = req.body || {};
+    const allowedPeriods = ["prelim", "midterm", "final", "overall"];
+    if (period !== undefined && !allowedPeriods.includes(period)) {
+      return res.status(400).json({ error: "Invalid period" });
+    }
+    for (const [field, value] of Object.entries({ subjectOfferingId, academicYear, semester })) {
+      if (value !== undefined && (typeof value !== "string" || !value.trim())) {
+        return res.status(400).json({ error: `Invalid ${field}` });
+      }
+    }
+
+    const student = await get(db, "SELECT id FROM students WHERE studentId = ?", [studentId]);
+    if (!student) return res.status(404).json({ error: "Student not found" });
+
+    const query = buildGradeFinalizationQuery(student, { period, subjectOfferingId, academicYear, semester });
+    const eligibleGrades = await all(db, query.sql, query.params);
+    let finalizedCount = 0;
+    await withTransaction(db, async () => {
+      for (const grade of eligibleGrades) {
+        const result = await run(db, "UPDATE grades SET status = 'finalized' WHERE id = ? AND status != 'finalized'", [grade.id]);
+        finalizedCount += result.changes;
+      }
+    });
+
+    if (finalizedCount > 0) {
+      await createActivityLog(
+        req.userContext.userId,
+        req.userContext.role,
+        "Finalized student grades",
+        `${studentId}: ${finalizedCount} records`,
+        req.userContext.role,
+      );
+    }
+    return res.json({ success: true, finalizedCount, message: `${finalizedCount} records finalized` });
+  },
+);
 
 // ---------------------------------------------------------------------
 // OTHER ROUTES (unchanged or minimally adapted)

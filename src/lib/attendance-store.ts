@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchAttendanceRecords, saveAttendance, type AttendanceRecord } from "./api";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 const EVENT = "bwest:attendance-changed";
 
 function broadcastUpdate() {
@@ -9,30 +8,12 @@ function broadcastUpdate() {
   window.dispatchEvent(new CustomEvent(EVENT));
 }
 
-let eventSource: EventSource | null = null;
-
-function ensureAttendanceEventSource() {
-  if (typeof window === "undefined") return;
-  if (!eventSource) {
-    eventSource = new EventSource(`${API_BASE}/api/events/attendance`);
-    eventSource.onmessage = () => {
-      window.dispatchEvent(new CustomEvent(EVENT));
-    };
-    eventSource.onerror = () => {
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-    };
-  }
-}
-
 export async function getAttendance(offeringId: string, date: string): Promise<AttendanceRecord[]> {
   return fetchAttendanceRecords({ offeringId, date });
 }
 
 export async function saveAttendanceRecord(
-  studentId: string,        // human-readable
+  studentId: string, // human-readable
   subjectOfferingId: string,
   date: string,
   status: "present" | "absent" | "late" | "excused",
@@ -59,7 +40,6 @@ export function useAttendance(offeringId: string, date: string) {
   }, [offeringId, date]);
 
   useEffect(() => {
-    ensureAttendanceEventSource();
     refresh();
     const onChange = () => refresh();
     window.addEventListener(EVENT, onChange);

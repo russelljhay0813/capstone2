@@ -1,8 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Search, CheckCircle, XCircle, Clock, ArrowRight } from "lucide-react";
-import { fetchStudents, fetchEligibleReenrollments, reenrollStudent } from "@/lib/api";
+import { Search, ArrowRight } from "lucide-react";
+import {
+  fetchEligibleReenrollments,
+  reenrollStudent,
+  type EligibleReenrollment,
+  type StudentRegistration,
+} from "@/lib/api";
 import { getApprovedStudents, REGISTRATIONS_EVENT } from "@/lib/registrations-store";
 import { toast } from "sonner";
 
@@ -11,8 +16,8 @@ export const Route = createFileRoute("/dashboard/registrar/reenrollment")({
 });
 
 function RegistrarReenrollment() {
-  const [students, setStudents] = useState<any[]>([]);
-  const [eligible, setEligible] = useState<any[]>([]);
+  const [students, setStudents] = useState<StudentRegistration[]>([]);
+  const [eligible, setEligible] = useState<EligibleReenrollment[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -28,7 +33,7 @@ function RegistrarReenrollment() {
   const loadStudents = async () => {
     try {
       const data = await getApprovedStudents();
-      setStudents(data as any[]);
+      setStudents(data);
     } catch {
       setStudents([]);
     }
@@ -54,18 +59,16 @@ function RegistrarReenrollment() {
     );
   });
 
-  const handleReenroll = async (student: any) => {
+  const handleReenroll = async (student: EligibleReenrollment) => {
     if (!confirm(`Approve re-enrollment for ${student.firstName} ${student.lastName}?`)) return;
     setLoading(true);
     try {
-      await reenrollStudent(student.studentId, {
-        nextAcademicYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
-      });
-      toast.success("Re-enrollment approved. Student advanced to next semester.");
+      await reenrollStudent(student.studentId, {});
+      toast.success("Re-enrollment approved for the next academic term.");
       loadEligible();
       loadStudents();
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to process re-enrollment");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to process re-enrollment");
     } finally {
       setLoading(false);
     }

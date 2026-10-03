@@ -8,13 +8,33 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.venv/
+.expo/
+*.exe
+*.msi
+*.apk
+*.db
+*.sqlite
+*.sqlite3
 dist
 dist-ssr
+test-results/
+playwright-report/
 .output
 .vinxi
 .tanstack/**
 .nitro
 *.local
+
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+mobile_build/.env
+mobile_build/.env.*
+!mobile_build/.env.example
 
 # Wrangler / Cloudflare
 .wrangler/

@@ -16,6 +16,14 @@ export function resolveProgramIdForStudent(programName, programs = []) {
   return match?.id ?? null;
 }
 
+export function getSemesterSequence(semester) {
+  const normalized = String(semester || "").trim().toLowerCase();
+  if (normalized === "1st semester" || normalized === "first semester") return 1;
+  if (normalized === "2nd semester" || normalized === "second semester") return 2;
+  if (normalized === "summer" || normalized === "summer term") return 3;
+  return null;
+}
+
 /**
  * Infers the next academic target (year, semester, academic year) for a student,
  * based on their current academic context.
@@ -33,11 +41,11 @@ export function inferReenrollmentTarget(context, currentYear = new Date().getFul
     context?.academicYear || `${currentYear}-${currentYear + 1}`,
   ).trim();
   const currentYearLevel = String(context?.yearLevel || "").trim();
-  const currentSemester = String(context?.semester || "").trim();
+  const currentSemesterSequence = getSemesterSequence(context?.semester);
 
   const yearLevels = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
 
-  if (currentSemester === "1st Semester") {
+  if (currentSemesterSequence === 1) {
     return {
       academicYear: currentAcademicYear,
       yearLevel: currentYearLevel || yearLevels[0],

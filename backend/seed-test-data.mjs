@@ -21,7 +21,24 @@ const LAST_NAMES = ["Dela Cruz", "Santiago", "Manalo", "Villanueva", "Domingo", 
 const CITIES = ["Quezon City", "Makati", "Pasig", "Cebu City", "Davao City", "Antipolo", "Iloilo City", "Baguio"];
 const PROVINCES = ["Metro Manila", "Cebu", "Davao del Sur", "Rizal", "Iloilo", "Benguet"];
 const BARANGAYS = ["San Antonio", "Bagong Pag-asa", "Poblacion", "Mabolo", "Buhangin", "Commonwealth"];
-const FACULTY_NAMES = ["Maria Santos", "Jose Reyes", "Ana Bautista", "Ramon Garcia"];
+const FACULTY_SEED = [
+  { firstName: "Maria", middleName: "Lourdes", lastName: "Santos" },
+  { firstName: "Jose", middleName: "Mariano", lastName: "Reyes" },
+  { firstName: "Ana", middleName: "Therese", lastName: "Bautista" },
+  { firstName: "Ramon", middleName: "Dela Cruz", lastName: "Garcia" },
+  { firstName: "Katrina", middleName: "Nicole", lastName: "Mendoza" },
+  { firstName: "Michael", middleName: "Angelo", lastName: "Villanueva" },
+  { firstName: "Sophia", middleName: "Isabel", lastName: "Garcia" },
+  { firstName: "Daniel", middleName: "Enrique", lastName: "Tan" },
+  { firstName: "Jennifer", middleName: "Mae", lastName: "Lim" },
+  { firstName: "Paolo", middleName: "Christian", lastName: "Mercado" },
+  { firstName: "Grace", middleName: "Angela", lastName: "Navarro" },
+  { firstName: "Benjamin", middleName: "John", lastName: "Salazar" },
+  { firstName: "Mary", middleName: "Claire", lastName: "Rivera" },
+  { firstName: "Arthur", middleName: "James", lastName: "Ocampo" },
+  { firstName: "Rosalie", middleName: "Marie", lastName: "Dizon" },
+];
+const FACULTY_NAMES = FACULTY_SEED.map(({ firstName, lastName }) => `${firstName} ${lastName}`);
 const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
 
 const id = () => crypto.randomUUID();
@@ -67,6 +84,82 @@ function currentAcademicYear(years) {
     years.filter((year) => year.status === "active").sort((a, b) => b.code.localeCompare(a.code))[0];
 }
 
+async function ensureFacultyRecords(db) {
+  const existingFaculty = await all(
+    db,
+    `SELECT f.id, f.userId, f.employeeId, f.email, f.firstName, f.lastName, f.middleName, u.username
+     FROM faculty f
+     LEFT JOIN users u ON u.id = f.userId
+     WHERE f.status = 'active'
+     ORDER BY f.employeeId`,
+  );
+  const usedUsernames = new Set((await all(db, "SELECT username FROM users")).map((row) => row.username));
+  const usedEmails = new Set(existingFaculty.map((row) => row.email).filter(Boolean));
+  const usedEmployeeIds = new Set(existingFaculty.map((row) => row.employeeId).filter(Boolean));
+  const faculty = [...existingFaculty];
+
+  for (let index = 0; index < FACULTY_SEED.length; index += 1) {
+    const seed = FACULTY_SEED[index];
+    const match = faculty.find(
+      (member) =>
+        member.firstName === seed.firstName &&
+        member.lastName === seed.lastName &&
+        ((member.middleName || "") === (seed.middleName || "")),
+    );
+    if (match) continue;
+
+    let username = `${slug(seed.firstName)}.${slug(seed.lastName)}@piat.edu.ph`;
+    let suffix = 2;
+    while (usedUsernames.has(username) || usedEmails.has(username)) {
+      username = `${slug(seed.firstName)}.${slug(seed.lastName)}${suffix++}@piat.edu.ph`;
+    }
+    usedUsernames.add(username);
+    usedEmails.add(username);
+
+    let employeeId = `2026-${String(1000 + index).padStart(4, "0")}`;
+    while (usedEmployeeIds.has(employeeId)) {
+      employeeId = `2026-${String(Number(employeeId.slice(5)) + 1).padStart(4, "0")}`;
+    }
+    usedEmployeeIds.add(employeeId);
+
+    const userId = `MOCK-FAC2026-${String(index + 1).padStart(4, "0")}`;
+    const userDbId = id();
+    const facultyId = id();
+    await run(
+      db,
+      `INSERT INTO users (id, userId, username, email, password, firstName, lastName, middleName, role, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'faculty', 'active', ?)`,
+      [userDbId, userId, username, username, hashPassword(PASSWORD), seed.firstName, seed.lastName, seed.middleName || null, now],
+    );
+    await run(
+      db,
+      `INSERT INTO faculty (id, userId, employeeId, firstName, middleName, lastName, email, department, designation, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, 'Academic Affairs', 'Faculty', 'active', ?)`,
+      [facultyId, userDbId, employeeId, seed.firstName, seed.middleName || null, seed.lastName, username, now],
+    );
+    faculty.push({ id: facultyId, userId: userDbId, employeeId, email: username, firstName: seed.firstName, lastName: seed.lastName, middleName: seed.middleName || null, username });
+  }
+
+  return faculty;
+}
+
+async function assignFacultyToOfferings(db, faculty) {
+  const offerings = await all(
+    db,
+    `SELECT so.id, so.facultyId, sec.programId, sec.yearLevel, sec.code, sem.sequence, sem.id AS semesterId
+     FROM subjectOfferings so
+     JOIN sections sec ON sec.id = so.sectionId
+     JOIN semesters sem ON sem.id = so.semesterId
+     WHERE sec.code LIKE 'MOCK-%'
+     ORDER BY sec.programId, sec.yearLevel, sem.sequence, sec.code, so.id`,
+  );
+
+  for (let index = 0; index < offerings.length; index += 1) {
+    const offering = offerings[index];
+    const assignedFaculty = faculty[index % faculty.length];
+    if (!assignedFaculty) continue;
+    await run(db, "UPDATE subjectOfferings SET facultyId = ? WHERE id = ?", [assignedFaculty.id, offering.id]);
+  }
+}
+
 async function reset(db) {
   await withTransaction(db, async () => {
     await run(db, `DELETE FROM academicRecords WHERE studentId IN (SELECT id FROM students WHERE reviewNote = ?)`, [MOCK_NOTE]);
@@ -75,11 +168,12 @@ async function reset(db) {
     await run(db, `DELETE FROM grades WHERE studentId IN (SELECT id FROM students WHERE reviewNote = ?)`, [MOCK_NOTE]);
     await run(db, `DELETE FROM enrollments WHERE studentId IN (SELECT id FROM students WHERE reviewNote = ?)`, [MOCK_NOTE]);
     await run(db, "DELETE FROM subjectOfferings WHERE sectionId IN (SELECT id FROM sections WHERE code LIKE 'MOCK-%')");
+    await run(db, "DELETE FROM faculty WHERE employeeId LIKE '2026-%' AND email LIKE '%@piat.edu.ph' AND userId IN (SELECT id FROM users WHERE userId LIKE 'MOCK-FAC2026-%')");
     await run(db, "DELETE FROM sections WHERE code LIKE 'MOCK-%'");
     await run(db, "DELETE FROM students WHERE reviewNote = ?", [MOCK_NOTE]);
-    await run(db, "DELETE FROM users WHERE userId LIKE 'MOCK-STD2026-%'");
+    await run(db, "DELETE FROM users WHERE userId LIKE 'MOCK-STD2026-%' OR userId LIKE 'MOCK-FAC2026-%'");
   });
-  console.log("Removed existing PIAT mock student data.");
+  console.log("Removed existing PIAT mock student and faculty data.");
 }
 
 async function ensureSection(db, program, yearLevel, semester, academicYear, letter) {
@@ -116,6 +210,9 @@ async function seed(db) {
   const semesters = await all(db, "SELECT * FROM semesters WHERE academicYearId = ? AND status = 'active' ORDER BY sequence", [activeYear.id]);
   const currentSemester = semesters.find((semester) => semester.sequence === 1) || semesters[0];
   if (!currentSemester) throw new Error(`No active semester exists for ${activeYear.code}.`);
+  const faculty = await ensureFacultyRecords(db);
+  if (!faculty.length) throw new Error("No active faculty records exist; the seed will not invent faculty.");
+  await assignFacultyToOfferings(db, faculty);
   await ensureFacultyCredentials(db);
   const existingMock = await get(db, "SELECT COUNT(*) AS count FROM students WHERE reviewNote = ?", [MOCK_NOTE]);
   if (existingMock.count > 0) {
@@ -123,8 +220,6 @@ async function seed(db) {
     return { activeYear, currentSemester, studentCount: existingMock.count, programCount: programs.length };
   }
   const previousYears = years.filter((year) => year.id !== activeYear.id && year.status === "active").sort((a, b) => b.code.localeCompare(a.code));
-  const faculty = await all(db, "SELECT * FROM faculty WHERE status = 'active' ORDER BY id");
-  if (!faculty.length) throw new Error("No active faculty records exist; the seed will not invent faculty.");
   const usedStudentIds = new Set((await all(db, "SELECT studentId FROM students WHERE studentId LIKE 'STD2026-%'")).map((row) => row.studentId));
   const usedUsernames = new Set((await all(db, "SELECT username FROM users")).map((row) => row.username));
   const usedEmails = new Set((await all(db, "SELECT email FROM students WHERE email IS NOT NULL")).map((row) => row.email));

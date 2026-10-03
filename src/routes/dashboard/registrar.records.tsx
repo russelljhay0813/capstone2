@@ -125,7 +125,7 @@ function RegistrarRecords() {
     if (!confirm(`Finalize all academic records for ${student.firstName} ${student.lastName}?`))
       return;
     try {
-      const result = await finalizeStudentRecords(student.id, {});
+      const result = await finalizeStudentRecords(student.studentId, {});
       import("sonner").then(({ toast }) => {
         toast.success(`Academic records finalized. ${result.finalizedCount} records updated.`);
       });

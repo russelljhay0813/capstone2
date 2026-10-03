@@ -2,55 +2,56 @@ import { createFileRoute } from "@tanstack/react-router";
 import { BarChart3, TrendingUp, Users, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
 import { StatCard } from "@/components/StatCard";
-import { useUsers } from "@/lib/users-store";
-import { useStudents, type Student } from "@/lib/students-store";
-import { fetchSubjectOfferings, fetchPrograms } from "@/lib/api";
-import { useState, useEffect } from "react";
+import { fetchAdminAnalytics, type AdminAnalytics } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/dashboard/admin/analytics")({
-  component: AdminAnalytics,
+  component: AdminAnalyticsPage,
 });
 
-function AdminAnalytics() {
-  const users = useUsers();
-  const students = useStudents();
-  const [offeringsCount, setOfferingsCount] = useState(0);
-  const [programs, setPrograms] = useState<string[]>([]);
+function AdminAnalyticsPage() {
+  const { user } = useAuth();
+  const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchSubjectOfferings()
-      .then((offerings) => setOfferingsCount(offerings.length))
-      .catch(() => setOfferingsCount(0));
-    fetchPrograms()
-      .then(setPrograms)
-      .catch(() => setPrograms([]));
-  }, []);
+    if (user?.role !== "admin") return;
 
-  // Count students with approved/active status
-  const totalStudents = students.filter(
-    (student: Student) =>
-      student.status === "approved" ||
-      student.status === "active"
-  ).length;
+    let cancelled = false;
+    fetchAdminAnalytics()
+      .then((data) => {
+        if (!cancelled) setAnalytics(data);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : "Unable to load analytics.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
 
-  const totalFaculty = users.filter((user) => user.role === "faculty" && user.status === "active").length;
-  const totalRegistrars = users.filter((user) => user.role === "registrar" && user.status === "active").length;
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.role]);
 
-  // Program breakdown – in the new schema, program is not on student directly.
-  // We use the enrollment data to determine program, but for a quick dashboard,
-  // we show a message that program breakdown requires additional data.
-  // For now, we'll show a placeholder or use the program from student if available.
-  const programStats = programs
-    .map((program: string) => ({
-      program,
-      // In the new schema, program is not stored on student.
-      // We'll show a placeholder until we implement enrollment-based program lookup.
-      count: 0,
-    }))
-    .filter((p) => p.count > 0);
+  if (!user || user.role !== "admin") {
+    return (
+      <p className="text-sm text-muted-foreground" role="alert">
+        Administrator access is required to view analytics.
+      </p>
+    );
+  }
 
-  // For a more accurate count, we would need to fetch enrollments and map to programs.
-  // For now, we just show a message.
+  const stats = [
+    { title: "Total Students", value: analytics?.totalStudents, icon: Users },
+    { title: "Active Faculty", value: analytics?.activeFaculty, icon: TrendingUp },
+    { title: "Registrars", value: analytics?.registrars, icon: BookOpen },
+    { title: "Subject Offerings", value: analytics?.subjectOfferings, icon: BarChart3 },
+  ];
 
   return (
     <div className="space-y-6">
@@ -59,20 +60,21 @@ function AdminAnalytics() {
         <p className="text-sm text-muted-foreground">Institutional performance and trends</p>
       </div>
 
+      {loadError && (
+        <p className="text-sm text-destructive" role="alert">
+          Unable to load analytics: {loadError}
+        </p>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { title: "Total Students", value: totalStudents, icon: Users },
-          { title: "Active Faculty", value: totalFaculty, icon: TrendingUp },
-          { title: "Registrars", value: totalRegistrars, icon: BookOpen },
-          { title: "Subject Offerings", value: offeringsCount, icon: BarChart3 },
-        ].map((stat, index) => (
+        {stats.map((stat, index) => (
           <motion.div
             key={stat.title}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.08 }}
           >
-            <StatCard {...stat} />
+            <StatCard {...stat} value={stat.value ?? (isLoading ? "Loading" : "Unavailable")} />
           </motion.div>
         ))}
       </div>
@@ -81,22 +83,22 @@ function AdminAnalytics() {
         <h2 className="font-heading text-sm font-semibold text-card-foreground">
           Students by Program
         </h2>
-        {programStats.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground py-6 text-center">
-            Program breakdown requires additional data. Please use the Reports section for detailed analytics.
-          </p>
-        ) : (
+        {analytics ? (
           <div className="mt-4 space-y-3">
-            {programStats.map((p) => (
+            {analytics.studentsByProgram.map((program) => (
               <div
-                key={p.program}
+                key={program.program}
                 className="flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3"
               >
-                <span className="text-sm font-medium text-foreground">{p.program}</span>
-                <span className="text-sm font-medium text-foreground">{p.count}</span>
+                <span className="text-sm font-medium text-foreground">{program.program}</span>
+                <span className="text-sm font-medium text-foreground">{program.count}</span>
               </div>
             ))}
           </div>
+        ) : (
+          <p className="mt-4 py-6 text-center text-sm text-muted-foreground">
+            {isLoading ? "Loading program distribution…" : "Program distribution is unavailable."}
+          </p>
         )}
       </div>
     </div>

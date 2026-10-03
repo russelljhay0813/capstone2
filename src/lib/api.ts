@@ -105,7 +105,7 @@ export interface SubjectOffering {
   semesterSequence?: number;
   sectionName?: string;
   yearLevel?: string;
-  programName?: string;
+  programName?: string | null;
   facultyName?: string;
 }
 
@@ -336,9 +336,9 @@ export interface StudentRegistrationPayload {
 }
 
 export async function fetchStudents(status?: string): Promise<StudentRegistration[]> {
-  const query = status ? `?status=${encodeURIComponent(status)}` : "";
-  const response = await request<{ data: StudentRegistration[] }>(`/api/students${query}`);
-  return response.data;
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  return requestAllPages<StudentRegistration>("/api/students", params);
 }
 
 export async function fetchStudentById(studentId: string, authToken?: string): Promise<StudentRegistration> {
@@ -448,6 +448,7 @@ export interface StudentEnrollment {
   academicYearCode?: string;
   semester?: string;
   semesterName?: string;
+  programName?: string;
   yearLevel?: string;
   sectionName?: string;
   facultyName?: string;
@@ -775,8 +776,23 @@ export async function createSection(section: {
 }
 
 // ---------- RE-ENROLLMENT ----------
-export async function fetchEligibleReenrollments(): Promise<{ studentId: string }[]> {
-  return request<{ studentId: string }[]>("/api/students/eligible-for-reenrollment");
+export interface EligibleReenrollment {
+  id: string;
+  studentId: string;
+  firstName: string;
+  middleName?: string | null;
+  suffix?: string | null;
+  lastName: string;
+  program?: string;
+  yearLevel?: string;
+  semester?: string;
+  academicYear?: string;
+  section?: string;
+  sectionId?: string;
+}
+
+export async function fetchEligibleReenrollments(): Promise<EligibleReenrollment[]> {
+  return request<EligibleReenrollment[]>("/api/students/eligible-for-reenrollment");
 }
 
 export async function reenrollStudent(
@@ -790,14 +806,28 @@ export async function reenrollStudent(
 }
 
 // ---------- RECORDS FINALIZATION ----------
+export interface FinalizeStudentRecordsResult {
+  success: boolean;
+  finalizedCount: number;
+  message: string;
+}
+
 export async function finalizeStudentRecords(
   studentId: string,
-  data?: { period?: string; subjectOfferingId?: string; academicYear?: string; semester?: string },
-): Promise<any> {
-  return request<any>(`/api/students/${encodeURIComponent(studentId)}/finalize-records`, {
-    method: "POST",
-    body: JSON.stringify(data || {}),
-  });
+  data?: {
+    period?: "prelim" | "midterm" | "final" | "overall";
+    subjectOfferingId?: string;
+    academicYear?: string;
+    semester?: string;
+  },
+): Promise<FinalizeStudentRecordsResult> {
+  return request<FinalizeStudentRecordsResult>(
+    `/api/students/${encodeURIComponent(studentId)}/finalize-records`,
+    {
+      method: "POST",
+      body: JSON.stringify(data || {}),
+    },
+  );
 }
 
 // ---------- ANNOUNCEMENTS ----------
@@ -895,6 +925,18 @@ export interface AdminDashboardStats {
 
 export async function fetchAdminDashboardStats(): Promise<AdminDashboardStats> {
   return request<AdminDashboardStats>("/api/dashboard/admin");
+}
+
+export interface AdminAnalytics {
+  totalStudents: number;
+  activeFaculty: number;
+  registrars: number;
+  subjectOfferings: number;
+  studentsByProgram: { program: string; count: number }[];
+}
+
+export async function fetchAdminAnalytics(): Promise<AdminAnalytics> {
+  return request<AdminAnalytics>("/api/dashboard/analytics");
 }
 
 export async function updateUserApi(
