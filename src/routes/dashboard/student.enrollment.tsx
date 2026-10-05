@@ -1,11 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { BookOpen, Sparkles, RefreshCw, CheckCircle2 } from "lucide-react";
+import { BookOpen, RefreshCw } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useEnrollments } from "@/lib/enrollment-store"; // new store that uses offeringId
+import { useEnrollments } from "@/lib/enrollment-store";
 import { useGrades } from "@/lib/grades-store";
 import { fetchCurriculum, reenrollStudent } from "@/lib/api";
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
+import {
+  groupStudentEnrollments,
+  studentEnrollmentTermLabel,
+} from "@/lib/student-enrollment-terms";
 
 export const Route = createFileRoute("/dashboard/student/enrollment")({
   component: StudentEnrollment,
@@ -13,7 +17,8 @@ export const Route = createFileRoute("/dashboard/student/enrollment")({
 
 function StudentEnrollment() {
   const { user } = useAuth();
-  const enrollments = useEnrollments(user?.studentId ?? ""); // returns offerings with subject details
+  const navigate = useNavigate();
+  const enrollments = useEnrollments(user?.studentId ?? "");
   const grades = useGrades();
   const [showReenrollModal, setShowReenrollModal] = useState(false);
   const [canReenroll, setCanReenroll] = useState(false);
@@ -25,24 +30,26 @@ function StudentEnrollment() {
     { code: string; title: string; units: number }[]
   >([]);
 
-  const totalUnits = enrollments.reduce((sum, e) => sum + (e.units || 0), 0);
   const program = user?.program || "";
+  const terms = groupStudentEnrollments(enrollments);
 
   // Check reenrollment eligibility: all enrolled offerings have finalized grades
   useEffect(() => {
-    if (!user?.studentId || enrollments.length === 0) {
+    const activeEnrollments = enrollments.filter((enrollment) => enrollment.status !== "dropped");
+    if (!user?.studentId || activeEnrollments.length === 0) {
       setCanReenroll(false);
       return;
     }
 
-    const allGradesSubmitted = enrollments.every((enrollment) => {
+    const allGradesSubmitted = activeEnrollments.every((enrollment) => {
       const grade = grades.find(
-        (g) => g.studentId === user.studentId && g.subjectOfferingId === enrollment.id,
+        (g) =>
+          g.studentId === user.studentId && g.subjectOfferingId === enrollment.subjectOfferingId,
       );
       return grade && grade.status !== "draft";
     });
 
-    if (allGradesSubmitted && enrollments.length > 0) {
+    if (allGradesSubmitted) {
       setCanReenroll(true);
       // Determine next semester/year from the latest enrollment (or from student profile)
       const currentSemester = user?.semester || "1st Semester";
@@ -104,105 +111,96 @@ function StudentEnrollment() {
       import("sonner").then(({ toast }) => {
         toast.success("Re-enrollment submitted successfully.");
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       import("sonner").then(({ toast }) => {
-        toast.error(err?.message || "Failed to submit re-enrollment request.");
+        toast.error(err instanceof Error ? err.message : "Failed to submit re-enrollment request.");
       });
     }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-heading text-xl font-bold text-foreground">Enrollment</h1>
-          <p className="text-sm text-muted-foreground">
-            Subject offerings assigned to you for this semester. Re-enrollment available after all grades are
-            submitted.
-          </p>
-        </div>
+      <div className="flex justify-end gap-2">
         {canReenroll && (
           <button
             onClick={() => setShowReenrollModal(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+            className="inline-flex items-center gap-2 rounded-lg border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
           >
             <RefreshCw className="h-4 w-4" /> Apply for Re-enrollment
           </button>
         )}
+        <button
+          onClick={() => navigate({ to: "/dashboard/student/grades" })}
+          className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+        >
+          Student&apos;s Grade
+        </button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">Offerings Enrolled</p>
-          <p className="mt-1 font-heading text-2xl font-bold text-foreground">
-            {enrollments.length}
-          </p>
+      <div className="overflow-hidden rounded-lg border bg-card">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1120px] border-collapse text-xs">
+            <thead className="bg-sky-200 text-left text-[13px] font-semibold text-slate-800">
+              <tr>
+                <th className="px-4 py-3">Units</th>
+                <th className="px-4 py-3">Subject Code</th>
+                <th className="px-4 py-3">Description</th>
+                <th className="px-4 py-3">Section</th>
+                <th className="px-4 py-3">Time</th>
+                <th className="px-4 py-3">Room</th>
+                <th className="px-4 py-3">Instructor</th>
+                <th className="px-4 py-3 text-center">Evaluation Form</th>
+                <th className="px-4 py-3 text-center">Others</th>
+                <th className="px-4 py-3 text-center">Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {terms.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    No subject offerings enrolled yet. Contact your faculty or registrar for
+                    enrollment.
+                  </td>
+                </tr>
+              ) : (
+                terms.map((term) => (
+                  <Fragment key={term.key}>
+                    <tr className="bg-slate-200 text-slate-700">
+                      <td colSpan={10} className="px-4 py-2 italic">
+                        {studentEnrollmentTermLabel(term)}
+                      </td>
+                    </tr>
+                    {term.enrollments.map((enrollment) => (
+                      <tr key={enrollment.id} className="border-b border-slate-200 last:border-0">
+                        <td className="px-4 py-3 text-center">{enrollment.units ?? 0}</td>
+                        <td className="px-4 py-3 font-medium text-slate-900">
+                          {enrollment.subjectCode || "—"}
+                        </td>
+                        <td className="max-w-[260px] truncate px-4 py-3">
+                          {enrollment.subjectTitle || "—"}
+                        </td>
+                        <td className="px-4 py-3">{enrollment.sectionName || "—"}</td>
+                        <td className="px-4 py-3">{enrollment.schedule || "TBA"}</td>
+                        <td className="px-4 py-3">{enrollment.room || "TBA"}</td>
+                        <td className="px-4 py-3">{enrollment.facultyName || "TBA"}</td>
+                        <td className="px-4 py-3 text-center text-red-500">Unavailable</td>
+                        <td className="px-4 py-3 text-center">--</td>
+                        <td className="px-4 py-3 text-center font-semibold text-emerald-500">
+                          {enrollment.status === "completed" ? "Completed" : "Confirmed"}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td colSpan={10} className="px-4 py-3 font-semibold text-slate-900">
+                        Semestral Total Units: {term.totalUnits}
+                      </td>
+                    </tr>
+                  </Fragment>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">Total Units</p>
-          <p className="mt-1 font-heading text-2xl font-bold text-foreground">{totalUnits}</p>
-        </div>
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">Status</p>
-          <p className="mt-1 font-heading text-2xl font-bold text-success">Active</p>
-        </div>
-      </div>
-
-      <div className="rounded-xl border bg-card p-5 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <BookOpen className="h-4 w-4 text-accent" />
-          <h2 className="font-heading text-sm font-semibold text-card-foreground">My Subject Offerings</h2>
-        </div>
-
-        {enrollments.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-lg bg-muted/50 px-4 py-10 text-center">
-            <Sparkles className="h-6 w-6 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              No subject offerings enrolled yet. Contact your faculty or registrar for enrollment.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {enrollments.map((enrollment) => {
-              const grade = grades.find(
-                (g) => g.studentId === user?.studentId && g.subjectOfferingId === enrollment.subjectOfferingId,
-              );
-              const hasGrade = !!grade && grade.status !== "draft";
-              return (
-                <motion.div
-                  key={enrollment.id}
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center justify-between gap-4 rounded-lg bg-muted/50 px-4 py-3"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-heading text-sm font-bold text-foreground">
-                        {enrollment.subjectCode || "—"}
-                      </span>
-                      <span className="text-sm text-foreground">{enrollment.subjectTitle || "—"}</span>
-                    </div>
-                    <div className="mt-0.5 text-xs text-muted-foreground">
-                      {enrollment.schedule || "TBA"} · {enrollment.room || "TBA"} · Instructor: {enrollment.facultyName || "TBA"}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {hasGrade && (
-                      <>
-                        <CheckCircle2 className="h-4 w-4 text-success" />
-                        <span className="sr-only">Grade Submitted</span>
-                      </>
-                    )}
-                    <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
-                      {enrollment.units || 0} units
-                    </span>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* Re-enrollment Modal */}
