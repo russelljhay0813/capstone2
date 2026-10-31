@@ -4,10 +4,11 @@ import LandingPage from "@/components/landing/LandingPage";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "PIAT — Academic Management System" },
+      { title: "PIAT — Philtech Institute of Arts and Technology Inc." },
       {
         name: "description",
-        content: "Public landing page for the PIAT Academic Management System.",
+        content:
+          "Welcome to PHILTECH INSTITUTE OF ARTS AND TECHNOLOGY INC. Explore the PIAT community and access the online portal.",
       },
     ],
   }),

@@ -1,0 +1,334 @@
+Project PIAT {
+  database_type: 'SQLite'
+  Note: 'Central backend database only. The Expo attendance application has a separate local cache and is not part of this ERD.'
+}
+
+Table academicRecords {
+  id text [pk]
+  studentId text [not null]
+  subjectOfferingId text
+  academicYearId text
+  semesterId text
+  recordType text [not null, default: 'summary', note: 'CHECK(recordType IN (summary, transcript, certificate))']
+  summary text
+  createdAt integer [not null]
+
+  indexes {
+    (subjectOfferingId) [name: 'idx_academicRecords_offeringId']
+    (studentId) [name: 'idx_academicRecords_studentId']
+  }
+}
+
+Table academicYears {
+  id text [pk]
+  code text [not null, unique]
+  name text [not null]
+  startDate text
+  endDate text
+  status text [not null, default: 'active', note: 'CHECK(status IN (active, inactive))']
+  createdAt integer [not null]
+}
+
+Table activityLogs {
+  id text [pk]
+  actorId text [not null]
+  actorName text [not null]
+  action text [not null]
+  details text [not null]
+  role text [not null]
+  createdAt integer [not null]
+
+  indexes {
+    (actorId) [name: 'idx_activityLogs_actorId']
+  }
+}
+
+Table announcements {
+  id text [pk]
+  title text [not null]
+  body text [not null]
+  category text [note: 'CHECK(category IN (general, academic, event, urgent))']
+  audience text [note: 'CHECK(audience IN (all, student, faculty))']
+  subjectId text [note: 'No database FK is declared for this column.']
+  pinned integer [default: 0, note: 'CHECK(pinned IN (0, 1))']
+  authorName text
+  authorRole text
+  createdAt integer [not null]
+  datePosted text
+}
+
+Table attendance {
+  id text [pk]
+  studentId text [not null]
+  subjectOfferingId text [not null]
+  date text [not null, note: 'ISO date string; unique per student and offering.']
+  time text
+  status text [not null, note: 'CHECK(status IN (present, absent, late, excused))']
+  updatedAt integer [not null]
+
+  indexes {
+    (studentId, subjectOfferingId, date) [unique]
+    (date) [name: 'idx_attendance_date']
+    (subjectOfferingId) [name: 'idx_attendance_offeringId']
+    (studentId) [name: 'idx_attendance_studentId']
+  }
+}
+
+Table curriculum {
+  id text [pk]
+  programId text [not null]
+  yearLevel text [not null]
+  semester text [not null]
+  subjectId text [not null]
+
+  indexes {
+    (programId, yearLevel, semester, subjectId) [unique]
+    (subjectId) [name: 'idx_curriculum_subjectId']
+    (programId) [name: 'idx_curriculum_programId']
+  }
+}
+
+Table enrollments {
+  id text [pk]
+  studentId text [not null]
+  subjectOfferingId text [not null]
+  status text [not null, default: 'enrolled', note: 'CHECK(status IN (enrolled, dropped, completed))']
+  enrolledAt integer [not null]
+
+  indexes {
+    (studentId, subjectOfferingId) [unique]
+    (subjectOfferingId) [name: 'idx_enrollments_offeringId']
+    (studentId) [name: 'idx_enrollments_studentId']
+  }
+}
+
+Table faculty {
+  id text [pk]
+  userId text [not null, unique]
+  employeeId text [unique]
+  firstName text [not null]
+  lastName text [not null]
+  middleName text
+  email text [not null, unique]
+  department text
+  designation text
+  status text [not null, default: 'active', note: 'CHECK(status IN (active, inactive))']
+  createdAt integer [not null]
+
+  indexes {
+    (userId) [name: 'idx_faculty_userId']
+  }
+}
+
+Table grades {
+  id text [pk]
+  studentId text [not null]
+  subjectOfferingId text [not null]
+  grade real
+  remarks text
+  period text [note: 'CHECK(period IN (prelim, midterm, final, overall))']
+  type text [note: 'CHECK(type IN (activity, quiz, exam, overall))']
+  component text
+  status text [not null, default: 'draft', note: 'CHECK(status IN (draft, submitted, finalized))']
+  submittedAt integer [not null]
+
+  indexes {
+    (studentId, subjectOfferingId, period, type) [unique]
+    (subjectOfferingId) [name: 'idx_grades_offeringId']
+    (studentId) [name: 'idx_grades_studentId']
+  }
+}
+
+Table notifications {
+  id text [pk]
+  userId text [not null]
+  type text [not null]
+  title text [not null]
+  message text [not null]
+  read integer [not null, default: 0, note: 'CHECK(read IN (0, 1))']
+  createdAt integer [not null]
+  relatedId text [note: 'Opaque related identifier; no database FK is declared.']
+
+  indexes {
+    (userId) [name: 'idx_notifications_userId']
+  }
+}
+
+Table programs {
+  id text [pk]
+  name text [not null, unique]
+  description text
+  status text [not null, default: 'active', note: 'CHECK(status IN (active, archived))']
+  createdAt integer [not null]
+}
+
+Table sections {
+  id text [pk]
+  code text [not null, unique]
+  name text [not null]
+  programId text
+  yearLevel text
+  semesterId text
+  academicYearId text
+  capacity integer
+  status text [not null, default: 'active', note: 'CHECK(status IN (active, inactive))']
+  createdAt integer [not null]
+
+  indexes {
+    (academicYearId) [name: 'idx_sections_academicYearId']
+    (semesterId) [name: 'idx_sections_semesterId']
+    (programId) [name: 'idx_sections_programId']
+  }
+}
+
+Table semesters {
+  id text [pk]
+  code text [not null, unique]
+  name text [not null]
+  sequence integer [not null]
+  academicYearId text
+  status text [not null, default: 'active', note: 'CHECK(status IN (active, inactive))']
+  createdAt integer [not null]
+
+  indexes {
+    (academicYearId) [name: 'idx_semesters_academicYearId']
+  }
+}
+
+Table settings {
+  id text [pk]
+  key text [not null, unique]
+  value text [not null]
+  type text [not null, default: 'string']
+  updatedAt integer [not null]
+}
+
+Table students {
+  id text [pk]
+  studentId text [not null, unique]
+  userId text [unique]
+  firstName text [not null]
+  lastName text [not null]
+  middleName text
+  suffix text
+  email text [unique]
+  password text [not null]
+  gender text [note: 'CHECK(gender IN (Male, Female, Other))']
+  dob text
+  civilStatus text
+  nationality text
+  religion text
+  educationLevel text [not null]
+  previousSchool text
+  lastGrade text
+  contactNumber text
+  address text
+  city text
+  province text
+  zip text
+  fatherName text
+  fatherOccupation text
+  fatherContact text
+  motherName text
+  motherOccupation text
+  motherContact text
+  guardianName text
+  guardianOccupation text
+  guardianContact text
+  guardianRelation text
+  parentName text
+  parentContact text
+  parentAddress text
+  emergencyName text
+  emergencyContact text
+  emergencyAddress text
+  emergencyRelation text
+  placeOfBirth text
+  barangay text
+  parentRelationship text
+  status text [note: 'CHECK(status IN (active, inactive, graduated, transferred, pending, approved, rejected))']
+  submittedAt integer
+  reviewedAt integer
+  reviewNote text
+  firstLoginAt integer
+  lastLoginAt integer
+  region text
+
+  indexes {
+    (userId) [name: 'idx_students_userId']
+  }
+}
+
+Table subjectOfferings {
+  id text [pk]
+  subjectId text [not null]
+  academicYearId text [not null]
+  semesterId text [not null]
+  sectionId text [not null]
+  facultyId text
+  schedule text
+  room text
+  capacity integer
+  status text [not null, default: 'active', note: 'CHECK(status IN (active, inactive, closed))']
+  createdAt integer [not null]
+
+  indexes {
+    (subjectId, academicYearId, semesterId, sectionId) [unique]
+    (facultyId) [name: 'idx_subjectOfferings_facultyId']
+    (sectionId) [name: 'idx_subjectOfferings_sectionId']
+    (semesterId) [name: 'idx_subjectOfferings_semesterId']
+    (academicYearId) [name: 'idx_subjectOfferings_academicYearId']
+    (subjectId) [name: 'idx_subjectOfferings_subjectId']
+  }
+}
+
+Table subjects {
+  id text [pk]
+  code text [not null, unique]
+  title text [not null]
+  units integer [not null]
+  description text
+}
+
+Table users {
+  id text [pk]
+  userId text [not null, unique]
+  username text [not null, unique]
+  email text [not null, unique]
+  password text [not null]
+  firstName text [not null]
+  lastName text [not null]
+  middleName text
+  role text [not null, note: 'CHECK(role IN (admin, faculty, registrar, student))']
+  status text [not null, default: 'active', note: 'CHECK(status IN (active, inactive))']
+  createdAt integer [not null]
+  temporaryPassword text
+  firstLoginAt integer
+  lastLoginAt integer
+}
+
+Ref: academicRecords.studentId > students.id [delete: cascade]
+Ref: academicRecords.subjectOfferingId > subjectOfferings.id [delete: set null]
+Ref: academicRecords.academicYearId > academicYears.id [delete: set null]
+Ref: academicRecords.semesterId > semesters.id [delete: set null]
+Ref: activityLogs.actorId > users.id [delete: cascade]
+Ref: attendance.studentId > students.id [delete: cascade]
+Ref: attendance.subjectOfferingId > subjectOfferings.id [delete: cascade]
+Ref: curriculum.programId > programs.id [delete: cascade]
+Ref: curriculum.subjectId > subjects.id [delete: cascade]
+Ref: enrollments.studentId > students.id [delete: cascade]
+Ref: enrollments.subjectOfferingId > subjectOfferings.id [delete: cascade]
+Ref: faculty.userId - users.id [delete: cascade]
+Ref: grades.studentId > students.id [delete: cascade]
+Ref: grades.subjectOfferingId > subjectOfferings.id [delete: cascade]
+Ref: notifications.userId > users.id [delete: cascade]
+Ref: sections.programId > programs.id [delete: set null]
+Ref: sections.semesterId > semesters.id [delete: set null]
+Ref: sections.academicYearId > academicYears.id [delete: set null]
+Ref: semesters.academicYearId > academicYears.id [delete: set null]
+Ref: students.userId - users.id [delete: set null]
+Ref: subjectOfferings.subjectId > subjects.id [delete: cascade]
+Ref: subjectOfferings.academicYearId > academicYears.id [delete: cascade]
+Ref: subjectOfferings.semesterId > semesters.id [delete: cascade]
+Ref: subjectOfferings.sectionId > sections.id [delete: cascade]
+Ref: subjectOfferings.facultyId > faculty.id [delete: set null]

@@ -149,7 +149,7 @@ function StudentDashboard() {
           fetchEnrollments({ studentId: user.studentId }),
           fetchGrades({ studentId: user.studentId }),
           fetchAnnouncements(),
-          fetchNotifications(user.studentId),
+          fetchNotifications(user.id),
         ]);
 
       setStudentProfile(profile);
