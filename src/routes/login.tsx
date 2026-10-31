@@ -161,107 +161,123 @@ function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,rgba(122,20,20,0.12),transparent_60%)] px-4 py-16">
+    <div className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-maroon-dark px-4 py-16">
+      <img
+        src="/piat-landing/piat-classroom-session.jpg"
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
+        fetchPriority="high"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(27,8,20,0.82),rgba(49,12,31,0.62)_55%,rgba(27,8,20,0.72))]"
+      />
       <motion.div
         initial={isHydrated ? { opacity: 0, y: 24 } : false}
         animate={isHydrated ? { opacity: 1, y: 0 } : undefined}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="w-full max-w-6xl"
       >
-        <div className="mb-8 text-center">
-          <img
-            src="/piat-logo.svg"
-            alt="PIAT logo"
-            className="mx-auto mb-4 h-16 w-16 rounded-full border border-primary/20 bg-white object-cover shadow-lg"
-          />
-          <h1 className="font-heading text-3xl font-semibold text-foreground">
-            PIAT Academic Management System
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Secure sign-in for students, faculty, registrar, and administrators.
-          </p>
-        </div>
+        <div className="grid items-center gap-10 md:grid-cols-[minmax(0,1fr)_26rem] md:gap-16">
+          <div className="text-center md:text-left">
+            <img
+              src="/piat-logo.svg"
+              alt="PIAT logo"
+              className="mx-auto mb-6 h-16 w-16 rounded-full border border-white/40 bg-white object-cover shadow-lg md:mx-0"
+            />
+            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-white/80">
+              Philtech Institute of Arts and Technology Inc.
+            </p>
+            <h1 className="mx-auto max-w-xl font-heading text-4xl font-semibold leading-tight text-white sm:text-5xl md:mx-0">
+              Your PIAT community, all in one place.
+            </h1>
+            <p className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-white/85 md:mx-0">
+              Sign in to continue to your academic dashboard.
+            </p>
+          </div>
 
-        <div className="rounded-3xl border border-border bg-card p-6 shadow-xl shadow-maroon-primary/10">
-          <h2 className="font-heading text-lg font-semibold text-foreground">User Login</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Use your registered email and password to continue.
-          </p>
-          <form onSubmit={handleLogin} className="mt-6 space-y-4">
-            <div>
-              <label
-                className="mb-1.5 block text-sm font-medium text-foreground"
-                htmlFor="login-email"
-              >
-                Username or email address
-              </label>
-              <input
-                id="login-email"
-                type="text"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (error) setError("");
-                }}
-                placeholder="name@piat.edu.ph"
-                aria-describedby={error ? "login-error" : undefined}
-                className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            <div>
-              <label
-                className="mb-1.5 block text-sm font-medium text-foreground"
-                htmlFor="login-password"
-              >
-                Password
-              </label>
-              <div className="relative">
+          <div className="rounded-3xl border border-white/70 bg-white/95 p-6 shadow-2xl shadow-black/25 backdrop-blur-md sm:p-8">
+            <h2 className="font-heading text-lg font-semibold text-foreground">User Login</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Use your registered email and password to continue.
+            </p>
+            <form onSubmit={handleLogin} className="mt-6 space-y-4">
+              <div>
+                <label
+                  className="mb-1.5 block text-sm font-medium text-foreground"
+                  htmlFor="login-email"
+                >
+                  Username or email address
+                </label>
                 <input
-                  id="login-password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
+                  id="login-email"
+                  type="text"
+                  autoComplete="email"
                   required
-                  value={password}
+                  value={email}
                   onChange={(e) => {
-                    setPassword(e.target.value);
+                    setEmail(e.target.value);
                     if (error) setError("");
                   }}
-                  placeholder="Enter your password"
+                  placeholder="name@piat.edu.ph"
                   aria-describedby={error ? "login-error" : undefined}
-                  className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 pr-16 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((value) => !value)}
-                  className="absolute inset-y-0 right-2 my-auto rounded-md px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? "Hide" : "Show"}
-                </button>
               </div>
-            </div>
-            {error && (
-              <p
-                id="login-error"
-                role="alert"
-                aria-live="polite"
-                className="text-sm text-destructive"
+              <div>
+                <label
+                  className="mb-1.5 block text-sm font-medium text-foreground"
+                  htmlFor="login-password"
+                >
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="login-password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (error) setError("");
+                    }}
+                    placeholder="Enter your password"
+                    aria-describedby={error ? "login-error" : undefined}
+                    className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 pr-16 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((value) => !value)}
+                    className="absolute inset-y-0 right-2 my-auto rounded-md px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+              {error && (
+                <p
+                  id="login-error"
+                  role="alert"
+                  aria-live="polite"
+                  className="text-sm text-destructive"
+                >
+                  {error}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
               >
-                {error}
-              </p>
-            )}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
-            >
-              <LogIn className="h-4 w-4" /> {isLoading ? "Signing in..." : "Sign In"}
-            </button>
-          </form>
+                <LogIn className="h-4 w-4" /> {isLoading ? "Signing in..." : "Sign In"}
+              </button>
+            </form>
+          </div>
         </div>
       </motion.div>
-      <footer className="absolute bottom-0 w-full border-t border-border/70 bg-background/80 px-4 py-4 text-center text-sm text-muted-foreground backdrop-blur">
+      <footer className="absolute inset-x-0 bottom-0 border-t border-white/20 bg-black/20 px-4 py-4 text-center text-sm text-white/80 backdrop-blur">
         © 2026 PIAT Academic Management System
       </footer>
     </div>
