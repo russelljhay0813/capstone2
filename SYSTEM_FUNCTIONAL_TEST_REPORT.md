@@ -32,7 +32,7 @@ Primary evidence reviewed:
 
 ## Executive summary
 
-The system is a real multi-role academic platform with a relational SQLite backend and role-aware web dashboards. The most complete areas are the admin/registrar/faculty/student role dashboards, the student registration and enrollment data model, and the faculty attendance tracking flows. However, actual implementation confidence is limited by a significant test gap: there is no real browser automation or mobile/device test suite in the repository, and several flows are only source-verified rather than UI/API-validated.
+The system is a real multi-role academic platform with a relational SQLite backend and role-aware web dashboards. The most complete areas are the admin/registrar/faculty/student role dashboards, the student registration and enrollment data model, and the faculty attendance tracking flows. A Playwright suite covers Administrator Analytics, and isolated backend integration suites cover several API workflows. Confidence remains limited because other role workflows, including Faculty Evaluation, have not been tested in a live browser, and mobile/device behavior has no emulator validation.
 
 The strongest evidence exists for:
 - role-based route access and JWT/role enforcement in [backend/index.js](backend/index.js)
@@ -41,7 +41,7 @@ The strongest evidence exists for:
 - local attendance capture and sync in the faculty mobile app
 
 The weakest areas are:
-- end-to-end validation of the browser UI flows
+- end-to-end validation of browser workflows beyond the Administrator Analytics page
 - true live synchronization and reconciliation testing for the mobile attendance app
 - confirmation of several “menu-driven” features that are not directly backed by corresponding route or data publication evidence
 
@@ -83,6 +83,7 @@ The weakest areas are:
 | Mobile faculty | Local storage schema | Mobile faculty | [mobile_build/src/lib/db.ts](mobile_build/src/lib/db.ts) | Implemented and working | Storage tables and related logic are present. |
 | Mobile faculty | Live backend sync validation | Mobile faculty | [mobile_build/src/lib/api.ts](mobile_build/src/lib/api.ts), [mobile_build/src/lib/sync-store.ts](mobile_build/src/lib/sync-store.ts) | Test gap | Sync path exists but no device/emulator test evidence was found. |
 | Shared data model | Academic schema | All roles | [backend/db.js](backend/db.js) | Implemented and working | Strong relational model for programs, students, faculty, offerings, enrollments, grades, attendance, etc. |
+| Shared workflows | Faculty Evaluation System | All roles | [backend/faculty-evaluations.js](backend/faculty-evaluations.js), [src/components/FacultyEvaluationPortal.tsx](src/components/FacultyEvaluationPortal.tsx) | Backend PASS / browser test gap | Isolated submission, anonymity, calculation, threshold, and role tests pass; the role-specific pages build but have not had browser workflow tests. |
 | Shared data model | Seed/mock data integrity | All roles | [backend/seed-test-data.mjs](backend/seed-test-data.mjs), [backend/audit-test-data.mjs](backend/audit-test-data.mjs) | Test gap | Good integrity scripts exist, but they are not a substitute for browser/device automation. |
 | Shared data model | Real-time cache events and custom hooks | Web app | [src/lib](src/lib) | Test gap | Hooks and event broadcasting exist, but system-wide functional validation is absent. |
 
@@ -98,13 +99,13 @@ These counts are based on the feature inventory in this report and should be rea
 | Backend-only | 1 |
 | Broken | 1 |
 | Not implemented | 4 |
-| Test gap | 7 |
-| Total audited features | 36 |
+| Test gap | 8 |
+| Total audited features | 37 |
 
 ## Major gaps and risks
 
-1. Test gap dominates the project.
-   - The repo contains SQLite seed scripts and integrity checks, but no real browser automation, no app emulator validation, and no end-to-end role journey tests.
+1. Test gap remains significant.
+   - Playwright covers Administrator Analytics, but not every role workflow or Faculty Evaluation. No app emulator/device validation is documented.
 
 2. Some UI pages are present but not fully source-verified as functional.
    - Faculty performance, faculty profile, schedule screens, and some reporting pages are visible but lack direct data/route proof of full workflow completion.
@@ -144,4 +145,39 @@ However, the codebase still shows a pronounced evidence gap between source imple
 
 ## Report status
 
-This report was prepared as an analysis artifact only and does not alter system behavior or implementation.
+This report includes implementation evidence and isolated validation for Administrator Analytics and Faculty Evaluation. Browser/device validation gaps are called out explicitly.
+
+## Feature: Faculty Evaluation System
+
+**Status:** Backend integration PASS; frontend build PASS; browser workflow TEST GAP.
+
+- **Role-specific routes:** Administrator `/dashboard/admin/faculty-evaluations`, Registrar `/dashboard/registrar/evaluations`, Student `/dashboard/student/faculty-evaluation`, and Faculty `/dashboard/faculty/evaluations`, linked from their role-specific sidebars.
+- **Database tables created:** `faculty_evaluations`, `evaluation_criteria`, `evaluation_questions`, `evaluation_period_questions`, `evaluation_responses`, `evaluation_answers`, and `evaluation_participation`. Existing `academicYears`, `semesters`, `students`, `faculty`, `subjects`, `subjectOfferings`, `sections`, `programs`, and `enrollments` are reused. Question/category membership, labels, ordering, and required flags are snapshotted when a period is activated so later questionnaire changes do not rewrite historical reports.
+- **Student workflow and eligibility:** `GET /api/evaluations/eligible` derives each student’s assignment from their verified JWT identity, enrolled offering, and assigned faculty. `POST /api/evaluations/submit` rechecks period dates, enrollment, semester, faculty assignment, active period question set, required answers, valid 1–5 ratings, and duplicate participation in a transaction. The response record contains no student/participation ID or response timestamp; the separate participation table has a unique `(evaluationId, studentId, subjectOfferingId)` constraint. The submission API returns only a success status.
+- **Administrator APIs:** `GET/POST /api/evaluations/periods`, `PUT /api/evaluations/periods/:id`, `GET/POST/PUT /api/evaluations/criteria`, and `GET/POST/PUT /api/evaluations/questions`. Questionnaire edits are blocked while a period is active; active periods snapshot their configuration.
+- **Reporting APIs:** `GET /api/evaluations/reports` is restricted to Admin and Registrar. `GET /api/evaluations/my-results` resolves the Faculty identity from the JWT and restricts output to that Faculty member. `GET /api/evaluations/periods/:id/questions` returns the relevant question set; `GET /api/evaluations/periods` lists periods allowed for the requesting role. All dashboard/report data is aggregated; there is no individual response endpoint.
+- **Role permissions and anonymity:** Student access exposes only their own eligible assignments/status. Registrar receives aggregate completion and evaluation reports, not a student-by-student participation list. Faculty sees only their own aggregates. Response and participation records have no direct relational key; report results and completion counts are suppressed below five respondents/eligible participants. Free-text feedback is accepted but not displayed because no institutional feedback-disclosure policy is configured.
+- **Calculation methodology:** Question and category means use valid 1–5 ratings in that period’s snapshotted question set. Overall rating is the mean of valid ratings for the faculty-subject group. Completion percentage is completed eligible student-offering participation divided by currently enrolled assignments for the selected period/filter. Interpretations use consistent bounds: 4.50–5.00 Excellent; 3.50–4.49 Very Satisfactory; 2.50–3.49 Satisfactory; 1.50–2.49 Fair; 1.00–1.49 Poor. Groups and completion details are suppressed until the five-response threshold is met.
+- **Report export:** Authorized report aggregates can be downloaded as CSV or PDF in the web client. Excel export is not implemented. Browser download behavior has not been exercised.
+
+### Faculty evaluation test results
+
+| Scenario | Result | Evidence |
+|---|---|---|
+| Student can submit only for an enrolled, assigned faculty-subject offering | PASS | Isolated backend integration test rejects a different offering. |
+| Complete submission and duplicate prevention | PASS | Test submits and retries the same assignment; retry returns 409. |
+| Required questions, invalid rating, and closed period validation | PASS | Missing required rating and rating 6 are rejected; closed-period submission returns 409. |
+| Rating/category/overall calculations | PASS | Five isolated responses with ratings 1–5 produce overall/category means of 3.00. |
+| Minimum reporting threshold and completion percentage | PASS | Results are suppressed below five; five valid submissions report 5/5 and 100%. |
+| Admin period and question management; active-question locking | PASS | Isolated API test creates/activates a period, creates a question, and confirms active-question edits are rejected. |
+| Registrar aggregate reporting without response identities | PASS | Report endpoint is role-gated and returned data contains no student identifiers. |
+| Faculty sees own results only | PASS | Own results are returned; an unrelated faculty account receives no groups; student access returns 403. |
+| Student sees only own completion status; history remains visible after closure | PASS | Isolated test attempts a cross-student query and verifies closed-period completion state is retained without submission access. |
+| Response/participation schema separation and SQLite integrity | PASS | Schema test verifies there are no student/participation columns on response rows and `PRAGMA integrity_check` returns `ok`. |
+| Existing backend regression tests | PASS | `npm --prefix backend test`: 8/8 tests passed. |
+| Frontend production build and generated routes | PASS | `npm run build` completed successfully. |
+| Live browser form submission, role navigation, and CSV/PDF download | TEST GAP | No browser workflow was run for this feature; build and backend API/integration coverage are not a substitute. |
+
+### Database preservation
+
+All integration-test writes, migrations, and account creation were performed on a temporary copy of `backend/piat.db`. The original database was opened read-only for inspection; its integrity check returned `ok`, and it still contains no faculty-evaluation tables. The pre-existing worktree modification to `backend/piat.db` was preserved and was not used as a test database.

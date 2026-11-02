@@ -4,6 +4,8 @@
 
 This dictionary describes the live central SQLite database at `backend/piat.db`, opened with SQLite read-only mode. The schema is created/reconciled by `backend/db.js`; no database content was changed for this documentation. It excludes the mobile app local cache, which is a separate SQLite database on native builds.
 
+The live database contains 18 application tables. The requested inventory of 16 tables, including the mapping from requested names to actual SQLite identifiers, is in [PIAT_16_TABLE_INVENTORY.md](PIAT_16_TABLE_INVENTORY.md). The database also contains `activityLogs` and `settings`, which are documented below but are outside that requested inventory.
+
 Nullable is taken from `PRAGMA table_info`. SQLite reports the `TEXT PRIMARY KEY` columns below without the `NOT NULL` flag (`Yes*`); this reflects the declared SQLite schema rather than a stricter ORM convention. The DBML expresses those columns as primary keys. `FK` and unique constraints/indexes are taken from SQLite metadata. Timestamps represented as INTEGER are written by application code using `Date.now()` (milliseconds).
 
 ## Tables

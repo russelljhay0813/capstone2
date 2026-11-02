@@ -14,6 +14,7 @@ import { resolveAutoApprovalStatus, validateRegistrationPayload } from "./regist
 import { resolveRequestIdentity } from "./auth/identity.js";
 import { buildAttendanceRecordPayload } from "./attendance/record.js";
 import { buildGradeFinalizationQuery } from "./grades/finalization.js";
+import { registerFacultyEvaluationRoutes } from "./faculty-evaluations.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -391,6 +392,8 @@ function requireSelfOrRole(resourceParamName, ...allowedRoles) {
     }
   };
 }
+
+registerFacultyEvaluationRoutes(app, db, { requireRole });
 
 function safeCompare(a, b) {
   const left = Buffer.from(String(a));

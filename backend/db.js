@@ -469,10 +469,162 @@ export async function initDb(db) {
     )`,
   );
 
+  // Faculty evaluations keep respondent identity in a separate participation table.
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS faculty_evaluations (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      academicYearId TEXT NOT NULL,
+      semesterId TEXT NOT NULL,
+      startDate TEXT NOT NULL,
+      endDate TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'active', 'closed')),
+      createdBy TEXT NOT NULL,
+      createdAt INTEGER NOT NULL,
+      FOREIGN KEY (academicYearId) REFERENCES academicYears(id) ON DELETE RESTRICT,
+      FOREIGN KEY (semesterId) REFERENCES semesters(id) ON DELETE RESTRICT,
+      FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE RESTRICT
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_criteria (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      displayOrder INTEGER NOT NULL DEFAULT 0,
+      isActive INTEGER NOT NULL DEFAULT 1 CHECK(isActive IN (0, 1))
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_questions (
+      id TEXT PRIMARY KEY,
+      criteriaId TEXT NOT NULL,
+      questionText TEXT NOT NULL,
+      isRequired INTEGER NOT NULL DEFAULT 1 CHECK(isRequired IN (0, 1)),
+      displayOrder INTEGER NOT NULL DEFAULT 0,
+      isActive INTEGER NOT NULL DEFAULT 1 CHECK(isActive IN (0, 1)),
+      FOREIGN KEY (criteriaId) REFERENCES evaluation_criteria(id) ON DELETE RESTRICT,
+      UNIQUE(criteriaId, questionText)
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_period_questions (
+      evaluationId TEXT NOT NULL,
+      questionId TEXT NOT NULL,
+      criteriaId TEXT NOT NULL,
+      categoryName TEXT NOT NULL,
+      categoryOrder INTEGER NOT NULL,
+      questionText TEXT NOT NULL,
+      questionOrder INTEGER NOT NULL,
+      isRequired INTEGER NOT NULL CHECK(isRequired IN (0, 1)),
+      PRIMARY KEY(evaluationId, questionId),
+      FOREIGN KEY (evaluationId) REFERENCES faculty_evaluations(id) ON DELETE CASCADE,
+      FOREIGN KEY (questionId) REFERENCES evaluation_questions(id) ON DELETE RESTRICT,
+      FOREIGN KEY (criteriaId) REFERENCES evaluation_criteria(id) ON DELETE RESTRICT
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_responses (
+      id TEXT PRIMARY KEY,
+      evaluationId TEXT NOT NULL,
+      facultyId TEXT NOT NULL,
+      subjectOfferingId TEXT NOT NULL,
+      feedback TEXT,
+      FOREIGN KEY (evaluationId) REFERENCES faculty_evaluations(id) ON DELETE CASCADE,
+      FOREIGN KEY (facultyId) REFERENCES faculty(id) ON DELETE RESTRICT,
+      FOREIGN KEY (subjectOfferingId) REFERENCES subjectOfferings(id) ON DELETE RESTRICT
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_answers (
+      id TEXT PRIMARY KEY,
+      responseId TEXT NOT NULL,
+      questionId TEXT NOT NULL,
+      rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+      comment TEXT,
+      FOREIGN KEY (responseId) REFERENCES evaluation_responses(id) ON DELETE CASCADE,
+      FOREIGN KEY (questionId) REFERENCES evaluation_questions(id) ON DELETE RESTRICT,
+      UNIQUE(responseId, questionId)
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_participation (
+      id TEXT PRIMARY KEY,
+      evaluationId TEXT NOT NULL,
+      studentId TEXT NOT NULL,
+      subjectOfferingId TEXT NOT NULL,
+      completedAt INTEGER NOT NULL,
+      FOREIGN KEY (evaluationId) REFERENCES faculty_evaluations(id) ON DELETE CASCADE,
+      FOREIGN KEY (studentId) REFERENCES students(id) ON DELETE CASCADE,
+      FOREIGN KEY (subjectOfferingId) REFERENCES subjectOfferings(id) ON DELETE RESTRICT,
+      UNIQUE(evaluationId, studentId, subjectOfferingId)
+    )`,
+  );
+
+  const criteria = [
+    ["criteria-teaching", "Teaching Effectiveness", "Clarity, subject knowledge, and relevant examples.", 1],
+    ["criteria-management", "Classroom Management", "Effective classroom activities and a positive learning environment.", 2],
+    ["criteria-communication", "Communication", "Clear instructions and helpful responses to questions.", 3],
+    ["criteria-professionalism", "Professionalism", "Punctuality, fairness, and respect.", 4],
+    ["criteria-engagement", "Student Engagement", "Participation and collaborative learning.", 5],
+    ["criteria-assessment", "Assessment and Feedback", "Appropriate assessments and constructive feedback.", 6],
+  ];
+  for (const [id, name, description, displayOrder] of criteria) {
+    await run(
+      db,
+      `INSERT OR IGNORE INTO evaluation_criteria (id, name, description, displayOrder, isActive)
+       VALUES (?, ?, ?, ?, 1)`,
+      [id, name, description, displayOrder],
+    );
+  }
+  const questions = [
+    ["question-teaching-clarity", "criteria-teaching", "The faculty member explains lessons clearly.", 1],
+    ["question-teaching-knowledge", "criteria-teaching", "The faculty member demonstrates knowledge of the subject.", 2],
+    ["question-teaching-examples", "criteria-teaching", "The faculty member provides relevant learning examples.", 3],
+    ["question-management-activities", "criteria-management", "The faculty member manages classroom activities effectively.", 1],
+    ["question-management-environment", "criteria-management", "The faculty member maintains a positive learning environment.", 2],
+    ["question-communication-instructions", "criteria-communication", "The faculty member communicates instructions clearly.", 1],
+    ["question-communication-questions", "criteria-communication", "The faculty member responds appropriately to student questions.", 2],
+    ["question-professionalism-punctuality", "criteria-professionalism", "The faculty member demonstrates punctuality.", 1],
+    ["question-professionalism-respect", "criteria-professionalism", "The faculty member treats students fairly and respectfully.", 2],
+    ["question-engagement-participation", "criteria-engagement", "The faculty member encourages active student participation.", 1],
+    ["question-engagement-collaboration", "criteria-engagement", "The faculty member promotes collaborative learning.", 2],
+    ["question-assessment-appropriate", "criteria-assessment", "The faculty member provides appropriate assessments.", 1],
+    ["question-assessment-feedback", "criteria-assessment", "The faculty member gives constructive feedback.", 2],
+  ];
+  for (const [id, criteriaId, questionText, displayOrder] of questions) {
+    await run(
+      db,
+      `INSERT OR IGNORE INTO evaluation_questions
+       (id, criteriaId, questionText, isRequired, displayOrder, isActive)
+       VALUES (?, ?, ?, 1, ?, 1)`,
+      [id, criteriaId, questionText, displayOrder],
+    );
+  }
+
   // ------------------------------------------------------------------
   // 2. CREATE INDEXES
   // ------------------------------------------------------------------
   await createFkIndexes(db);
+  await run(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_evaluation_responses_period_offering ON evaluation_responses(evaluationId, subjectOfferingId, facultyId)",
+  );
+  await run(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_evaluation_answers_question ON evaluation_answers(questionId, responseId)",
+  );
+  await run(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_evaluation_participation_student ON evaluation_participation(evaluationId, studentId)",
+  );
 
   // ------------------------------------------------------------------
   // 3. RECONCILE INVALID APPROVED-EMPTY STUDENT RECORDS

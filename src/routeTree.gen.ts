@@ -24,6 +24,7 @@ import { Route as DashboardFacultyIndexRouteImport } from './routes/dashboard/fa
 import { Route as DashboardAdminIndexRouteImport } from './routes/dashboard/admin.index'
 import { Route as DashboardStudentScheduleRouteImport } from './routes/dashboard/student.schedule'
 import { Route as DashboardStudentGradesRouteImport } from './routes/dashboard/student.grades'
+import { Route as DashboardStudentFacultyEvaluationRouteImport } from './routes/dashboard/student.faculty-evaluation'
 import { Route as DashboardStudentEnrollmentRouteImport } from './routes/dashboard/student.enrollment'
 import { Route as DashboardStudentAttendanceRouteImport } from './routes/dashboard/student.attendance'
 import { Route as DashboardRegistrarTranscriptsRouteImport } from './routes/dashboard/registrar.transcripts'
@@ -35,6 +36,7 @@ import { Route as DashboardRegistrarReenrollmentRouteImport } from './routes/das
 import { Route as DashboardRegistrarRecordsRouteImport } from './routes/dashboard/registrar.records'
 import { Route as DashboardRegistrarProfileRouteImport } from './routes/dashboard/registrar.profile'
 import { Route as DashboardRegistrarFacultyRouteImport } from './routes/dashboard/registrar.faculty'
+import { Route as DashboardRegistrarEvaluationsRouteImport } from './routes/dashboard/registrar.evaluations'
 import { Route as DashboardRegistrarEnrollmentRouteImport } from './routes/dashboard/registrar.enrollment'
 import { Route as DashboardRegistrarCurriculumRouteImport } from './routes/dashboard/registrar.curriculum'
 import { Route as DashboardRegistrarAnnouncementsRouteImport } from './routes/dashboard/registrar.announcements'
@@ -43,12 +45,14 @@ import { Route as DashboardFacultySubjectDetailsRouteImport } from './routes/das
 import { Route as DashboardFacultyProfileRouteImport } from './routes/dashboard/faculty.profile'
 import { Route as DashboardFacultyPerformanceRouteImport } from './routes/dashboard/faculty.performance'
 import { Route as DashboardFacultyGradesRouteImport } from './routes/dashboard/faculty.grades'
+import { Route as DashboardFacultyEvaluationsRouteImport } from './routes/dashboard/faculty.evaluations'
 import { Route as DashboardFacultyClassesRouteImport } from './routes/dashboard/faculty.classes'
 import { Route as DashboardFacultyAttendanceRouteImport } from './routes/dashboard/faculty.attendance'
 import { Route as DashboardFacultyAnnouncementsRouteImport } from './routes/dashboard/faculty.announcements'
 import { Route as DashboardAdminUsersRouteImport } from './routes/dashboard/admin.users'
 import { Route as DashboardAdminSettingsRouteImport } from './routes/dashboard/admin.settings'
 import { Route as DashboardAdminSecurityRouteImport } from './routes/dashboard/admin.security'
+import { Route as DashboardAdminFacultyEvaluationsRouteImport } from './routes/dashboard/admin.faculty-evaluations'
 import { Route as DashboardAdminAnnouncementsRouteImport } from './routes/dashboard/admin.announcements'
 import { Route as DashboardAdminAnalyticsRouteImport } from './routes/dashboard/admin.analytics'
 
@@ -128,6 +132,12 @@ const DashboardStudentGradesRoute = DashboardStudentGradesRouteImport.update({
   path: '/grades',
   getParentRoute: () => DashboardStudentRoute,
 } as any)
+const DashboardStudentFacultyEvaluationRoute =
+  DashboardStudentFacultyEvaluationRouteImport.update({
+    id: '/faculty-evaluation',
+    path: '/faculty-evaluation',
+    getParentRoute: () => DashboardStudentRoute,
+  } as any)
 const DashboardStudentEnrollmentRoute =
   DashboardStudentEnrollmentRouteImport.update({
     id: '/enrollment',
@@ -194,6 +204,12 @@ const DashboardRegistrarFacultyRoute =
     path: '/faculty',
     getParentRoute: () => DashboardRegistrarRoute,
   } as any)
+const DashboardRegistrarEvaluationsRoute =
+  DashboardRegistrarEvaluationsRouteImport.update({
+    id: '/evaluations',
+    path: '/evaluations',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
 const DashboardRegistrarEnrollmentRoute =
   DashboardRegistrarEnrollmentRouteImport.update({
     id: '/enrollment',
@@ -240,6 +256,12 @@ const DashboardFacultyGradesRoute = DashboardFacultyGradesRouteImport.update({
   path: '/grades',
   getParentRoute: () => DashboardFacultyRoute,
 } as any)
+const DashboardFacultyEvaluationsRoute =
+  DashboardFacultyEvaluationsRouteImport.update({
+    id: '/evaluations',
+    path: '/evaluations',
+    getParentRoute: () => DashboardFacultyRoute,
+  } as any)
 const DashboardFacultyClassesRoute = DashboardFacultyClassesRouteImport.update({
   id: '/classes',
   path: '/classes',
@@ -272,6 +294,12 @@ const DashboardAdminSecurityRoute = DashboardAdminSecurityRouteImport.update({
   path: '/security',
   getParentRoute: () => DashboardAdminRoute,
 } as any)
+const DashboardAdminFacultyEvaluationsRoute =
+  DashboardAdminFacultyEvaluationsRouteImport.update({
+    id: '/faculty-evaluations',
+    path: '/faculty-evaluations',
+    getParentRoute: () => DashboardAdminRoute,
+  } as any)
 const DashboardAdminAnnouncementsRoute =
   DashboardAdminAnnouncementsRouteImport.update({
     id: '/announcements',
@@ -296,12 +324,14 @@ export interface FileRoutesByFullPath {
   '/dashboard/student': typeof DashboardStudentRouteWithChildren
   '/dashboard/admin/analytics': typeof DashboardAdminAnalyticsRoute
   '/dashboard/admin/announcements': typeof DashboardAdminAnnouncementsRoute
+  '/dashboard/admin/faculty-evaluations': typeof DashboardAdminFacultyEvaluationsRoute
   '/dashboard/admin/security': typeof DashboardAdminSecurityRoute
   '/dashboard/admin/settings': typeof DashboardAdminSettingsRoute
   '/dashboard/admin/users': typeof DashboardAdminUsersRoute
   '/dashboard/faculty/announcements': typeof DashboardFacultyAnnouncementsRoute
   '/dashboard/faculty/attendance': typeof DashboardFacultyAttendanceRoute
   '/dashboard/faculty/classes': typeof DashboardFacultyClassesRoute
+  '/dashboard/faculty/evaluations': typeof DashboardFacultyEvaluationsRoute
   '/dashboard/faculty/grades': typeof DashboardFacultyGradesRoute
   '/dashboard/faculty/performance': typeof DashboardFacultyPerformanceRoute
   '/dashboard/faculty/profile': typeof DashboardFacultyProfileRoute
@@ -310,6 +340,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/registrar/announcements': typeof DashboardRegistrarAnnouncementsRoute
   '/dashboard/registrar/curriculum': typeof DashboardRegistrarCurriculumRoute
   '/dashboard/registrar/enrollment': typeof DashboardRegistrarEnrollmentRoute
+  '/dashboard/registrar/evaluations': typeof DashboardRegistrarEvaluationsRoute
   '/dashboard/registrar/faculty': typeof DashboardRegistrarFacultyRoute
   '/dashboard/registrar/profile': typeof DashboardRegistrarProfileRoute
   '/dashboard/registrar/records': typeof DashboardRegistrarRecordsRoute
@@ -321,6 +352,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/registrar/transcripts': typeof DashboardRegistrarTranscriptsRoute
   '/dashboard/student/attendance': typeof DashboardStudentAttendanceRoute
   '/dashboard/student/enrollment': typeof DashboardStudentEnrollmentRoute
+  '/dashboard/student/faculty-evaluation': typeof DashboardStudentFacultyEvaluationRoute
   '/dashboard/student/grades': typeof DashboardStudentGradesRoute
   '/dashboard/student/schedule': typeof DashboardStudentScheduleRoute
   '/dashboard/admin/': typeof DashboardAdminIndexRoute
@@ -336,12 +368,14 @@ export interface FileRoutesByTo {
   '/dashboard/announcements': typeof DashboardAnnouncementsRoute
   '/dashboard/admin/analytics': typeof DashboardAdminAnalyticsRoute
   '/dashboard/admin/announcements': typeof DashboardAdminAnnouncementsRoute
+  '/dashboard/admin/faculty-evaluations': typeof DashboardAdminFacultyEvaluationsRoute
   '/dashboard/admin/security': typeof DashboardAdminSecurityRoute
   '/dashboard/admin/settings': typeof DashboardAdminSettingsRoute
   '/dashboard/admin/users': typeof DashboardAdminUsersRoute
   '/dashboard/faculty/announcements': typeof DashboardFacultyAnnouncementsRoute
   '/dashboard/faculty/attendance': typeof DashboardFacultyAttendanceRoute
   '/dashboard/faculty/classes': typeof DashboardFacultyClassesRoute
+  '/dashboard/faculty/evaluations': typeof DashboardFacultyEvaluationsRoute
   '/dashboard/faculty/grades': typeof DashboardFacultyGradesRoute
   '/dashboard/faculty/performance': typeof DashboardFacultyPerformanceRoute
   '/dashboard/faculty/profile': typeof DashboardFacultyProfileRoute
@@ -350,6 +384,7 @@ export interface FileRoutesByTo {
   '/dashboard/registrar/announcements': typeof DashboardRegistrarAnnouncementsRoute
   '/dashboard/registrar/curriculum': typeof DashboardRegistrarCurriculumRoute
   '/dashboard/registrar/enrollment': typeof DashboardRegistrarEnrollmentRoute
+  '/dashboard/registrar/evaluations': typeof DashboardRegistrarEvaluationsRoute
   '/dashboard/registrar/faculty': typeof DashboardRegistrarFacultyRoute
   '/dashboard/registrar/profile': typeof DashboardRegistrarProfileRoute
   '/dashboard/registrar/records': typeof DashboardRegistrarRecordsRoute
@@ -361,6 +396,7 @@ export interface FileRoutesByTo {
   '/dashboard/registrar/transcripts': typeof DashboardRegistrarTranscriptsRoute
   '/dashboard/student/attendance': typeof DashboardStudentAttendanceRoute
   '/dashboard/student/enrollment': typeof DashboardStudentEnrollmentRoute
+  '/dashboard/student/faculty-evaluation': typeof DashboardStudentFacultyEvaluationRoute
   '/dashboard/student/grades': typeof DashboardStudentGradesRoute
   '/dashboard/student/schedule': typeof DashboardStudentScheduleRoute
   '/dashboard/admin': typeof DashboardAdminIndexRoute
@@ -381,12 +417,14 @@ export interface FileRoutesById {
   '/dashboard/student': typeof DashboardStudentRouteWithChildren
   '/dashboard/admin/analytics': typeof DashboardAdminAnalyticsRoute
   '/dashboard/admin/announcements': typeof DashboardAdminAnnouncementsRoute
+  '/dashboard/admin/faculty-evaluations': typeof DashboardAdminFacultyEvaluationsRoute
   '/dashboard/admin/security': typeof DashboardAdminSecurityRoute
   '/dashboard/admin/settings': typeof DashboardAdminSettingsRoute
   '/dashboard/admin/users': typeof DashboardAdminUsersRoute
   '/dashboard/faculty/announcements': typeof DashboardFacultyAnnouncementsRoute
   '/dashboard/faculty/attendance': typeof DashboardFacultyAttendanceRoute
   '/dashboard/faculty/classes': typeof DashboardFacultyClassesRoute
+  '/dashboard/faculty/evaluations': typeof DashboardFacultyEvaluationsRoute
   '/dashboard/faculty/grades': typeof DashboardFacultyGradesRoute
   '/dashboard/faculty/performance': typeof DashboardFacultyPerformanceRoute
   '/dashboard/faculty/profile': typeof DashboardFacultyProfileRoute
@@ -395,6 +433,7 @@ export interface FileRoutesById {
   '/dashboard/registrar/announcements': typeof DashboardRegistrarAnnouncementsRoute
   '/dashboard/registrar/curriculum': typeof DashboardRegistrarCurriculumRoute
   '/dashboard/registrar/enrollment': typeof DashboardRegistrarEnrollmentRoute
+  '/dashboard/registrar/evaluations': typeof DashboardRegistrarEvaluationsRoute
   '/dashboard/registrar/faculty': typeof DashboardRegistrarFacultyRoute
   '/dashboard/registrar/profile': typeof DashboardRegistrarProfileRoute
   '/dashboard/registrar/records': typeof DashboardRegistrarRecordsRoute
@@ -406,6 +445,7 @@ export interface FileRoutesById {
   '/dashboard/registrar/transcripts': typeof DashboardRegistrarTranscriptsRoute
   '/dashboard/student/attendance': typeof DashboardStudentAttendanceRoute
   '/dashboard/student/enrollment': typeof DashboardStudentEnrollmentRoute
+  '/dashboard/student/faculty-evaluation': typeof DashboardStudentFacultyEvaluationRoute
   '/dashboard/student/grades': typeof DashboardStudentGradesRoute
   '/dashboard/student/schedule': typeof DashboardStudentScheduleRoute
   '/dashboard/admin/': typeof DashboardAdminIndexRoute
@@ -427,12 +467,14 @@ export interface FileRouteTypes {
     | '/dashboard/student'
     | '/dashboard/admin/analytics'
     | '/dashboard/admin/announcements'
+    | '/dashboard/admin/faculty-evaluations'
     | '/dashboard/admin/security'
     | '/dashboard/admin/settings'
     | '/dashboard/admin/users'
     | '/dashboard/faculty/announcements'
     | '/dashboard/faculty/attendance'
     | '/dashboard/faculty/classes'
+    | '/dashboard/faculty/evaluations'
     | '/dashboard/faculty/grades'
     | '/dashboard/faculty/performance'
     | '/dashboard/faculty/profile'
@@ -441,6 +483,7 @@ export interface FileRouteTypes {
     | '/dashboard/registrar/announcements'
     | '/dashboard/registrar/curriculum'
     | '/dashboard/registrar/enrollment'
+    | '/dashboard/registrar/evaluations'
     | '/dashboard/registrar/faculty'
     | '/dashboard/registrar/profile'
     | '/dashboard/registrar/records'
@@ -452,6 +495,7 @@ export interface FileRouteTypes {
     | '/dashboard/registrar/transcripts'
     | '/dashboard/student/attendance'
     | '/dashboard/student/enrollment'
+    | '/dashboard/student/faculty-evaluation'
     | '/dashboard/student/grades'
     | '/dashboard/student/schedule'
     | '/dashboard/admin/'
@@ -467,12 +511,14 @@ export interface FileRouteTypes {
     | '/dashboard/announcements'
     | '/dashboard/admin/analytics'
     | '/dashboard/admin/announcements'
+    | '/dashboard/admin/faculty-evaluations'
     | '/dashboard/admin/security'
     | '/dashboard/admin/settings'
     | '/dashboard/admin/users'
     | '/dashboard/faculty/announcements'
     | '/dashboard/faculty/attendance'
     | '/dashboard/faculty/classes'
+    | '/dashboard/faculty/evaluations'
     | '/dashboard/faculty/grades'
     | '/dashboard/faculty/performance'
     | '/dashboard/faculty/profile'
@@ -481,6 +527,7 @@ export interface FileRouteTypes {
     | '/dashboard/registrar/announcements'
     | '/dashboard/registrar/curriculum'
     | '/dashboard/registrar/enrollment'
+    | '/dashboard/registrar/evaluations'
     | '/dashboard/registrar/faculty'
     | '/dashboard/registrar/profile'
     | '/dashboard/registrar/records'
@@ -492,6 +539,7 @@ export interface FileRouteTypes {
     | '/dashboard/registrar/transcripts'
     | '/dashboard/student/attendance'
     | '/dashboard/student/enrollment'
+    | '/dashboard/student/faculty-evaluation'
     | '/dashboard/student/grades'
     | '/dashboard/student/schedule'
     | '/dashboard/admin'
@@ -511,12 +559,14 @@ export interface FileRouteTypes {
     | '/dashboard/student'
     | '/dashboard/admin/analytics'
     | '/dashboard/admin/announcements'
+    | '/dashboard/admin/faculty-evaluations'
     | '/dashboard/admin/security'
     | '/dashboard/admin/settings'
     | '/dashboard/admin/users'
     | '/dashboard/faculty/announcements'
     | '/dashboard/faculty/attendance'
     | '/dashboard/faculty/classes'
+    | '/dashboard/faculty/evaluations'
     | '/dashboard/faculty/grades'
     | '/dashboard/faculty/performance'
     | '/dashboard/faculty/profile'
@@ -525,6 +575,7 @@ export interface FileRouteTypes {
     | '/dashboard/registrar/announcements'
     | '/dashboard/registrar/curriculum'
     | '/dashboard/registrar/enrollment'
+    | '/dashboard/registrar/evaluations'
     | '/dashboard/registrar/faculty'
     | '/dashboard/registrar/profile'
     | '/dashboard/registrar/records'
@@ -536,6 +587,7 @@ export interface FileRouteTypes {
     | '/dashboard/registrar/transcripts'
     | '/dashboard/student/attendance'
     | '/dashboard/student/enrollment'
+    | '/dashboard/student/faculty-evaluation'
     | '/dashboard/student/grades'
     | '/dashboard/student/schedule'
     | '/dashboard/admin/'
@@ -658,6 +710,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardStudentGradesRouteImport
       parentRoute: typeof DashboardStudentRoute
     }
+    '/dashboard/student/faculty-evaluation': {
+      id: '/dashboard/student/faculty-evaluation'
+      path: '/faculty-evaluation'
+      fullPath: '/dashboard/student/faculty-evaluation'
+      preLoaderRoute: typeof DashboardStudentFacultyEvaluationRouteImport
+      parentRoute: typeof DashboardStudentRoute
+    }
     '/dashboard/student/enrollment': {
       id: '/dashboard/student/enrollment'
       path: '/enrollment'
@@ -735,6 +794,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRegistrarFacultyRouteImport
       parentRoute: typeof DashboardRegistrarRoute
     }
+    '/dashboard/registrar/evaluations': {
+      id: '/dashboard/registrar/evaluations'
+      path: '/evaluations'
+      fullPath: '/dashboard/registrar/evaluations'
+      preLoaderRoute: typeof DashboardRegistrarEvaluationsRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
     '/dashboard/registrar/enrollment': {
       id: '/dashboard/registrar/enrollment'
       path: '/enrollment'
@@ -791,6 +857,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardFacultyGradesRouteImport
       parentRoute: typeof DashboardFacultyRoute
     }
+    '/dashboard/faculty/evaluations': {
+      id: '/dashboard/faculty/evaluations'
+      path: '/evaluations'
+      fullPath: '/dashboard/faculty/evaluations'
+      preLoaderRoute: typeof DashboardFacultyEvaluationsRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
     '/dashboard/faculty/classes': {
       id: '/dashboard/faculty/classes'
       path: '/classes'
@@ -833,6 +906,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAdminSecurityRouteImport
       parentRoute: typeof DashboardAdminRoute
     }
+    '/dashboard/admin/faculty-evaluations': {
+      id: '/dashboard/admin/faculty-evaluations'
+      path: '/faculty-evaluations'
+      fullPath: '/dashboard/admin/faculty-evaluations'
+      preLoaderRoute: typeof DashboardAdminFacultyEvaluationsRouteImport
+      parentRoute: typeof DashboardAdminRoute
+    }
     '/dashboard/admin/announcements': {
       id: '/dashboard/admin/announcements'
       path: '/announcements'
@@ -853,6 +933,7 @@ declare module '@tanstack/react-router' {
 interface DashboardAdminRouteChildren {
   DashboardAdminAnalyticsRoute: typeof DashboardAdminAnalyticsRoute
   DashboardAdminAnnouncementsRoute: typeof DashboardAdminAnnouncementsRoute
+  DashboardAdminFacultyEvaluationsRoute: typeof DashboardAdminFacultyEvaluationsRoute
   DashboardAdminSecurityRoute: typeof DashboardAdminSecurityRoute
   DashboardAdminSettingsRoute: typeof DashboardAdminSettingsRoute
   DashboardAdminUsersRoute: typeof DashboardAdminUsersRoute
@@ -862,6 +943,7 @@ interface DashboardAdminRouteChildren {
 const DashboardAdminRouteChildren: DashboardAdminRouteChildren = {
   DashboardAdminAnalyticsRoute: DashboardAdminAnalyticsRoute,
   DashboardAdminAnnouncementsRoute: DashboardAdminAnnouncementsRoute,
+  DashboardAdminFacultyEvaluationsRoute: DashboardAdminFacultyEvaluationsRoute,
   DashboardAdminSecurityRoute: DashboardAdminSecurityRoute,
   DashboardAdminSettingsRoute: DashboardAdminSettingsRoute,
   DashboardAdminUsersRoute: DashboardAdminUsersRoute,
@@ -876,6 +958,7 @@ interface DashboardFacultyRouteChildren {
   DashboardFacultyAnnouncementsRoute: typeof DashboardFacultyAnnouncementsRoute
   DashboardFacultyAttendanceRoute: typeof DashboardFacultyAttendanceRoute
   DashboardFacultyClassesRoute: typeof DashboardFacultyClassesRoute
+  DashboardFacultyEvaluationsRoute: typeof DashboardFacultyEvaluationsRoute
   DashboardFacultyGradesRoute: typeof DashboardFacultyGradesRoute
   DashboardFacultyPerformanceRoute: typeof DashboardFacultyPerformanceRoute
   DashboardFacultyProfileRoute: typeof DashboardFacultyProfileRoute
@@ -888,6 +971,7 @@ const DashboardFacultyRouteChildren: DashboardFacultyRouteChildren = {
   DashboardFacultyAnnouncementsRoute: DashboardFacultyAnnouncementsRoute,
   DashboardFacultyAttendanceRoute: DashboardFacultyAttendanceRoute,
   DashboardFacultyClassesRoute: DashboardFacultyClassesRoute,
+  DashboardFacultyEvaluationsRoute: DashboardFacultyEvaluationsRoute,
   DashboardFacultyGradesRoute: DashboardFacultyGradesRoute,
   DashboardFacultyPerformanceRoute: DashboardFacultyPerformanceRoute,
   DashboardFacultyProfileRoute: DashboardFacultyProfileRoute,
@@ -903,6 +987,7 @@ interface DashboardRegistrarRouteChildren {
   DashboardRegistrarAnnouncementsRoute: typeof DashboardRegistrarAnnouncementsRoute
   DashboardRegistrarCurriculumRoute: typeof DashboardRegistrarCurriculumRoute
   DashboardRegistrarEnrollmentRoute: typeof DashboardRegistrarEnrollmentRoute
+  DashboardRegistrarEvaluationsRoute: typeof DashboardRegistrarEvaluationsRoute
   DashboardRegistrarFacultyRoute: typeof DashboardRegistrarFacultyRoute
   DashboardRegistrarProfileRoute: typeof DashboardRegistrarProfileRoute
   DashboardRegistrarRecordsRoute: typeof DashboardRegistrarRecordsRoute
@@ -919,6 +1004,7 @@ const DashboardRegistrarRouteChildren: DashboardRegistrarRouteChildren = {
   DashboardRegistrarAnnouncementsRoute: DashboardRegistrarAnnouncementsRoute,
   DashboardRegistrarCurriculumRoute: DashboardRegistrarCurriculumRoute,
   DashboardRegistrarEnrollmentRoute: DashboardRegistrarEnrollmentRoute,
+  DashboardRegistrarEvaluationsRoute: DashboardRegistrarEvaluationsRoute,
   DashboardRegistrarFacultyRoute: DashboardRegistrarFacultyRoute,
   DashboardRegistrarProfileRoute: DashboardRegistrarProfileRoute,
   DashboardRegistrarRecordsRoute: DashboardRegistrarRecordsRoute,
@@ -937,6 +1023,7 @@ const DashboardRegistrarRouteWithChildren =
 interface DashboardStudentRouteChildren {
   DashboardStudentAttendanceRoute: typeof DashboardStudentAttendanceRoute
   DashboardStudentEnrollmentRoute: typeof DashboardStudentEnrollmentRoute
+  DashboardStudentFacultyEvaluationRoute: typeof DashboardStudentFacultyEvaluationRoute
   DashboardStudentGradesRoute: typeof DashboardStudentGradesRoute
   DashboardStudentScheduleRoute: typeof DashboardStudentScheduleRoute
   DashboardStudentIndexRoute: typeof DashboardStudentIndexRoute
@@ -945,6 +1032,8 @@ interface DashboardStudentRouteChildren {
 const DashboardStudentRouteChildren: DashboardStudentRouteChildren = {
   DashboardStudentAttendanceRoute: DashboardStudentAttendanceRoute,
   DashboardStudentEnrollmentRoute: DashboardStudentEnrollmentRoute,
+  DashboardStudentFacultyEvaluationRoute:
+    DashboardStudentFacultyEvaluationRoute,
   DashboardStudentGradesRoute: DashboardStudentGradesRoute,
   DashboardStudentScheduleRoute: DashboardStudentScheduleRoute,
   DashboardStudentIndexRoute: DashboardStudentIndexRoute,
