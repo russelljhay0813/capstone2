@@ -1,6 +1,16 @@
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 const REQUEST_TIMEOUT = 15000;
 
+export class ApiRequestError extends Error {
+  details?: Record<string, string>;
+
+  constructor(message: string, details?: Record<string, string>) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.details = details;
+  }
+}
+
 async function request<T>(path: string, opts: RequestInit = {}, authToken?: string): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
@@ -47,13 +57,13 @@ async function request<T>(path: string, opts: RequestInit = {}, authToken?: stri
     });
 
     if (!response.ok) {
-      let payload: { error?: string } | null = null;
+      let payload: { error?: string; details?: Record<string, string> } | null = null;
       try {
         payload = await response.json();
       } catch {
         // ignore parse errors
       }
-      throw new Error(payload?.error ?? response.statusText);
+      throw new ApiRequestError(payload?.error ?? response.statusText, payload?.details);
     }
 
     if (response.status === 204) {
@@ -224,7 +234,7 @@ export interface StudentRegistration {
   suffix?: string | null;
   lastName: string;
   email: string;
-  password: string; // hashed
+  password?: string;
   gender?: string | null;
   dob?: string | null;
   civilStatus?: string | null;
@@ -265,6 +275,7 @@ export interface StudentRegistration {
   academicYear?: string;
   section?: string;
   sectionId?: string;
+  enrollmentStatus?: string;
   status:
     | "not_started"
     | "in_progress"
@@ -283,6 +294,40 @@ export interface StudentRegistration {
   firstLoginAt?: number | null;
   lastLoginAt?: number | null;
 }
+
+export type StudentProfileUpdate = Partial<
+  Pick<
+    StudentRegistration,
+    | "firstName"
+    | "middleName"
+    | "lastName"
+    | "suffix"
+    | "gender"
+    | "dob"
+    | "civilStatus"
+    | "nationality"
+    | "religion"
+    | "placeOfBirth"
+    | "email"
+    | "contactNumber"
+    | "address"
+    | "barangay"
+    | "city"
+    | "province"
+    | "region"
+    | "zip"
+    | "fatherName"
+    | "fatherOccupation"
+    | "fatherContact"
+    | "motherName"
+    | "motherOccupation"
+    | "motherContact"
+    | "guardianName"
+    | "guardianOccupation"
+    | "guardianContact"
+    | "guardianRelation"
+  >
+>;
 
 export type Student = StudentRegistration;
 
@@ -345,10 +390,31 @@ export async function fetchStudentById(studentId: string, authToken?: string): P
   return request<StudentRegistration>(`/api/students/${encodeURIComponent(studentId)}`, {}, authToken);
 }
 
+export async function updateMyStudentProfile(
+  profile: StudentProfileUpdate,
+): Promise<StudentRegistration> {
+  return request<StudentRegistration>("/api/students/me/profile", {
+    method: "PUT",
+    body: JSON.stringify(profile),
+  });
+}
+
 export async function createStudent(student: StudentRegistrationPayload): Promise<StudentRegistration> {
   return request<StudentRegistration>("/api/students", {
     method: "POST",
     body: JSON.stringify(student),
+  });
+}
+
+export async function submitStudentRegistration(
+  registration: Omit<
+    StudentRegistrationPayload,
+    "password" | "educationLevel" | "status"
+  >,
+): Promise<StudentRegistration> {
+  return request<StudentRegistration>("/api/students/me/registration", {
+    method: "POST",
+    body: JSON.stringify(registration),
   });
 }
 
@@ -989,105 +1055,81 @@ export async function fetchReportCurriculum(): Promise<any[]> {
 }
 
 // ---------- FACULTY EVALUATIONS ----------
-export interface FacultyEvaluationPeriod {
-  id: string;
-  title: string;
-  academicYearId: string;
-  semesterId: string;
-  startDate: string;
-  endDate: string;
-  status: "draft" | "active" | "closed";
-  academicYear?: string;
-  semester?: string;
-}
-
-export interface EvaluationCriterion {
-  id: string;
-  name: string;
-  description?: string | null;
-  displayOrder: number;
-  isActive: number;
-}
-
-export interface EvaluationQuestion {
-  id: string;
-  criteriaId: string;
-  category?: string;
-  questionText: string;
-  isRequired: number;
-  displayOrder: number;
-  isActive: number;
-}
-
-export interface EvaluationPeriodQuestion {
-  questionId: string;
-  criteriaId: string;
-  category: string;
-  categoryOrder: number;
-  questionText: string;
-  isRequired: number;
-  displayOrder: number;
-}
-
-export interface EligibleFacultyEvaluation {
-  evaluationId: string;
-  evaluationTitle: string;
-  startDate: string;
-  endDate: string;
-  periodStatus: "draft" | "active" | "closed";
-  canSubmit: boolean;
+export interface GoogleEvaluationPeriod {
   academicYear: string;
   semester: string;
-  subjectOfferingId: string;
-  subjectCode: string;
-  subjectTitle: string;
-  facultyId: string;
-  facultyName: string;
-  programName?: string | null;
-  completed: number;
+  startDate: string;
+  endDate: string;
+  status: "active" | "upcoming" | "closed";
 }
 
-export interface FacultyEvaluationReportGroup {
-  evaluationId: string;
-  evaluationTitle: string;
+export interface GoogleEvaluationAssignment {
   academicYear: string;
   semester: string;
-  facultyId: string;
   facultyName: string;
-  subjectOfferingId: string;
   subjectCode: string;
   subjectTitle: string;
   programName?: string | null;
+}
+
+export interface GoogleEvaluationGroup {
+  facultyName: string;
+  subject: string;
+  academicYear: string;
+  semester: string;
+  programName: string;
   responseCount: number;
   overallAverage: number;
   interpretation: string;
   categories: Array<{
-    criteriaId: string;
     category: string;
     average: number;
     interpretation: string;
   }>;
-  questions: Array<{
-    questionId: string;
-    questionText: string;
-    average: number;
-    interpretation: string;
-  }>;
+  questionAverages: Array<{ question: string; average: number }>;
 }
 
-export interface FacultyEvaluationReport {
-  periods: FacultyEvaluationPeriod[];
-  completion: Array<{
-    evaluationId: string;
-    eligibleCount: number | null;
-    completedCount: number | null;
-    percentage: number | null;
-    suppressed: boolean;
-  }>;
-  groups: FacultyEvaluationReportGroup[];
+export interface GoogleEvaluationReport {
+  groups: GoogleEvaluationGroup[];
+  totalResponses: number;
+  filters: {
+    academicYears: string[];
+    semesters: string[];
+    programs: string[];
+    faculty: string[];
+    subjects: string[];
+  };
+  formUrl?: string | null;
+  spreadsheetUrl?: string | null;
 }
 
-function evaluationQuery(filters: Record<string, string | undefined>): string {
+export interface GoogleEvaluationWorkspaceStatus {
+  formConfigured: boolean;
+  sheetsConfigured: boolean;
+  periodConfigured: boolean;
+  formUrl: string | null;
+  spreadsheetUrl: string | null;
+  period: GoogleEvaluationPeriod | null;
+  totalResponses: number | null;
+  completionTrackingAvailable: false;
+}
+
+export interface GoogleEvaluationStudentAssignments {
+  period: GoogleEvaluationPeriod | null;
+  formUrl: string | null;
+  assignments: GoogleEvaluationAssignment[];
+  completionTrackingAvailable: false;
+}
+
+export async function fetchGoogleEvaluationWorkspaceStatus(): Promise<GoogleEvaluationWorkspaceStatus> {
+  return request<GoogleEvaluationWorkspaceStatus>("/api/evaluations/status");
+}
+
+export async function fetchGoogleEvaluationStudentAssignments(): Promise<GoogleEvaluationStudentAssignments> {
+  return request<GoogleEvaluationStudentAssignments>("/api/evaluations/student-assignments");
+}
+
+function googleEvaluationQuery(filters: Record<string, string | undefined>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value) params.set(key, value);
@@ -1096,101 +1138,18 @@ function evaluationQuery(filters: Record<string, string | undefined>): string {
   return query ? `?${query}` : "";
 }
 
-export async function fetchFacultyEvaluationPeriods(): Promise<FacultyEvaluationPeriod[]> {
-  return request<FacultyEvaluationPeriod[]>("/api/evaluations/periods");
-}
-
-export async function createFacultyEvaluationPeriod(input: {
-  title: string;
-  academicYearId: string;
-  semesterId: string;
-  startDate: string;
-  endDate: string;
-}): Promise<FacultyEvaluationPeriod> {
-  return request<FacultyEvaluationPeriod>("/api/evaluations/periods", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export async function updateFacultyEvaluationPeriod(
-  id: string,
-  patch: Partial<FacultyEvaluationPeriod>,
-): Promise<FacultyEvaluationPeriod> {
-  return request<FacultyEvaluationPeriod>(`/api/evaluations/periods/${encodeURIComponent(id)}`, {
-    method: "PUT",
-    body: JSON.stringify(patch),
-  });
-}
-
-export async function fetchEvaluationCriteria(): Promise<EvaluationCriterion[]> {
-  return request<EvaluationCriterion[]>("/api/evaluations/criteria");
-}
-
-export async function saveEvaluationCriterion(
-  input: Partial<EvaluationCriterion> & { name: string },
-  id?: string,
-): Promise<EvaluationCriterion> {
-  return request<EvaluationCriterion>(
-    id ? `/api/evaluations/criteria/${encodeURIComponent(id)}` : "/api/evaluations/criteria",
-    {
-      method: id ? "PUT" : "POST",
-      body: JSON.stringify(input),
-    },
-  );
-}
-
-export async function fetchEvaluationQuestions(): Promise<EvaluationQuestion[]> {
-  return request<EvaluationQuestion[]>("/api/evaluations/questions");
-}
-
-export async function saveEvaluationQuestion(
-  input: Partial<Omit<EvaluationQuestion, "isRequired">> & {
-    criteriaId: string;
-    questionText: string;
-    isRequired?: boolean | number;
-  },
-  id?: string,
-): Promise<EvaluationQuestion> {
-  return request<EvaluationQuestion>(
-    id ? `/api/evaluations/questions/${encodeURIComponent(id)}` : "/api/evaluations/questions",
-    {
-      method: id ? "PUT" : "POST",
-      body: JSON.stringify(input),
-    },
-  );
-}
-
-export async function fetchEvaluationQuestionsForPeriod(
-  periodId: string,
-): Promise<EvaluationPeriodQuestion[]> {
-  return request<EvaluationPeriodQuestion[]>(`/api/evaluations/periods/${encodeURIComponent(periodId)}/questions`);
-}
-
-export async function fetchEligibleFacultyEvaluations(): Promise<EligibleFacultyEvaluation[]> {
-  return request<EligibleFacultyEvaluation[]>("/api/evaluations/eligible");
-}
-
-export async function submitFacultyEvaluation(input: {
-  evaluationId: string;
-  subjectOfferingId: string;
-  answers: Array<{ questionId: string; rating: number }>;
-  feedback?: string;
-}): Promise<{ success: true; completed: true }> {
-  return request("/api/evaluations/submit", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export async function fetchFacultyEvaluationReport(
+export async function fetchGoogleEvaluationReport(
   filters: Record<string, string | undefined> = {},
-): Promise<FacultyEvaluationReport> {
-  return request<FacultyEvaluationReport>(`/api/evaluations/reports${evaluationQuery(filters)}`);
+): Promise<GoogleEvaluationReport> {
+  return request<GoogleEvaluationReport>(
+    `/api/evaluations/reports${googleEvaluationQuery(filters)}`,
+  );
 }
 
-export async function fetchMyFacultyEvaluationResults(): Promise<FacultyEvaluationReport> {
-  return request<FacultyEvaluationReport>("/api/evaluations/my-results");
+export async function fetchMyGoogleEvaluationResults(): Promise<{
+  groups: GoogleEvaluationGroup[];
+}> {
+  return request<{ groups: GoogleEvaluationGroup[] }>("/api/evaluations/my-results");
 }
 
 // ---------- SETTINGS ----------

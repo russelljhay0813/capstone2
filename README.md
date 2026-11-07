@@ -49,6 +49,7 @@ This repository contains the PIAT Academic Management System, a multi-platform a
 ## Backend and data seeding
 
 - The backend uses SQLite and stores data in `backend/piat.db`.
+- Faculty evaluations use Google Forms for student submissions and Google Sheets for response storage and calculations. See [the Google Workspace setup guide](./docs/GOOGLE_WORKSPACE_FACULTY_EVALUATIONS.md) before configuring the evaluation period or exposing the dashboard links.
 - The relational system-test dataset can be seeded using:
   ```bash
    npm run seed:test

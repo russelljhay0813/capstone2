@@ -3,6 +3,7 @@ import {
   fetchStudents,
   createStudent,
   updateStudent,
+  submitStudentRegistration,
   loginStudent,
   fetchCurriculum,
   fetchSubjects,
@@ -28,6 +29,12 @@ export type RegistrationStatus =
   | "rejected";
 
 export interface StudentRegistration extends ApiStudentRegistration {}
+
+type ExistingStudentRegistrationPayload = Omit<
+  StudentRegistrationPayload,
+  "password" | "educationLevel" | "status"
+> & { studentId: string };
+type NewStudentRegistrationPayload = StudentRegistrationPayload & { studentId?: undefined };
 
 export const REGISTRATIONS_EVENT = "bwest:registrations-changed";
 
@@ -72,11 +79,17 @@ export async function emailExists(email: string): Promise<boolean> {
 }
 
 export async function submitRegistration(
-  data: StudentRegistrationPayload & { studentId?: string },
+  data: ExistingStudentRegistrationPayload | NewStudentRegistrationPayload,
 ): Promise<StudentRegistration> {
-  const created = data.studentId
-    ? await updateStudent(data.studentId, { ...data, status: data.status ?? "approved" })
-    : await createStudent(data);
+  let created: StudentRegistration;
+  if ("password" in data) {
+    const { status, ...registration } = data;
+    void status;
+    created = await createStudent(registration);
+  } else {
+    const { studentId, ...registration } = data;
+    created = await submitStudentRegistration(registration);
+  }
   broadcastUpdate();
   return created;
 }

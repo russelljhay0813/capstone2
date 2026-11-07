@@ -3,7 +3,7 @@ import { fetchAnnouncements, createAnnouncement, deleteAnnouncementApi } from ".
 
 export type AnnouncementCategory = "general" | "academic" | "event" | "urgent";
 
-export type AnnouncementAudience = "all" | "student" | "faculty" | "registrar" | "admin";
+export type AnnouncementAudience = "all" | "student" | "faculty";
 
 export interface Announcement {
   id: string;
@@ -111,5 +111,6 @@ export function canPostAnnouncements(role: string): boolean {
 }
 
 export function visibleTo(a: Announcement, role: string): boolean {
+  if (role === "admin" || role === "registrar") return true;
   return a.audience === "all" || a.audience === role;
 }

@@ -11,24 +11,15 @@ import { after, before, test } from "node:test";
 
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceDatabase = path.join(backendDir, "piat.db");
-const jwtSecret = "faculty_evaluation_isolated_test_secret_2026";
-const password = "Faculty-Evaluation-Test-2026!";
+const jwtSecret = "google_forms_evaluation_test_secret_2026";
+const password = "Google-Evaluation-Test-2026!";
 let tempDir;
 let databasePath;
 let baseUrl;
 let serverProcess;
 let adminToken;
+let studentToken;
 let selectedOffering;
-let unrelatedOffering;
-let evaluationId;
-let students = [];
-let facultyToken;
-let otherFacultyToken;
-let managedQuestionId;
-
-function openTestDatabase() {
-  return new sqlite3.Database(databasePath);
-}
 
 function dbGet(db, sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -74,14 +65,18 @@ async function request(method, route, body, token) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await response.text();
-  return { status: response.status, data: text ? JSON.parse(text) : null };
+  const isJson = response.headers.get("content-type")?.includes("application/json");
+  return {
+    status: response.status,
+    data: text ? (isJson ? JSON.parse(text) : text) : null,
+  };
 }
 
 async function waitForBackend() {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${baseUrl}/api/evaluations/periods`);
+      const response = await fetch(`${baseUrl}/api/evaluations/status`);
       if (response.status === 401) return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -97,7 +92,7 @@ async function createAccount(role, name) {
     {
       role,
       firstName: name,
-      lastName: "EvaluationTest",
+      lastName: "FormsTest",
       email: `${name.toLowerCase()}.${crypto.randomUUID()}@example.test`,
       password,
     },
@@ -113,11 +108,11 @@ async function createAccount(role, name) {
 }
 
 before(async () => {
-  tempDir = await mkdtemp(path.join(os.tmpdir(), "piat-evaluations-"));
-  databasePath = path.join(tempDir, "piat-evaluation-test.db");
+  tempDir = await mkdtemp(path.join(os.tmpdir(), "piat-google-evaluations-"));
+  databasePath = path.join(tempDir, "piat-google-evaluation-test.db");
   await copyFile(sourceDatabase, databasePath);
 
-  const db = openTestDatabase();
+  const db = new sqlite3.Database(databasePath);
   const admin = await dbGet(db, "SELECT id, email FROM users WHERE role = 'admin' LIMIT 1");
   assert.ok(admin, "the isolated database copy must contain an administrator account");
   const salt = crypto.randomBytes(16).toString("hex");
@@ -128,18 +123,14 @@ before(async () => {
   ]);
   selectedOffering = await dbGet(
     db,
-    `SELECT id, academicYearId, semesterId
-     FROM subjectOfferings
-     WHERE EXISTS (SELECT 1 FROM enrollments WHERE subjectOfferingId = subjectOfferings.id)
+    `SELECT o.id, o.academicYearId, ay.code AS academicYear,
+            o.semesterId, sem.name AS semester
+     FROM subjectOfferings o
+     JOIN academicYears ay ON ay.id = o.academicYearId
+     JOIN semesters sem ON sem.id = o.semesterId
      LIMIT 1`,
   );
-  assert.ok(selectedOffering, "the isolated database copy must contain a subject offering");
-  unrelatedOffering = await dbGet(
-    db,
-    "SELECT id FROM subjectOfferings WHERE id != ? LIMIT 1",
-    [selectedOffering.id],
-  );
-  assert.ok(unrelatedOffering, "the isolated database copy must contain a second subject offering");
+  assert.ok(selectedOffering, "the isolated database copy must contain an academic offering");
   await closeDatabase(db);
 
   const port = await findFreePort();
@@ -151,6 +142,14 @@ before(async () => {
       JWT_SECRET: jwtSecret,
       PIAT_DB_PATH: databasePath,
       PORT: String(port),
+      GOOGLE_EVALUATION_FORM_URL: "https://docs.google.com/forms/d/e/test-form-id/viewform",
+      GOOGLE_EVALUATION_SPREADSHEET_ID: "",
+      GOOGLE_EVALUATION_SERVICE_ACCOUNT_EMAIL: "",
+      GOOGLE_EVALUATION_SERVICE_ACCOUNT_PRIVATE_KEY: "",
+      GOOGLE_EVALUATION_ACADEMIC_YEAR: selectedOffering.academicYear,
+      GOOGLE_EVALUATION_SEMESTER: selectedOffering.semester,
+      GOOGLE_EVALUATION_START_DATE: "2000-01-01",
+      GOOGLE_EVALUATION_END_DATE: "2099-12-31",
     },
     stdio: "ignore",
   });
@@ -161,80 +160,29 @@ before(async () => {
   });
   assert.equal(adminLogin.status, 200, JSON.stringify(adminLogin.data));
   adminToken = adminLogin.data.token;
-
-  const faculty = await createAccount("faculty", "EvaluationFaculty");
-  otherFacultyToken = (await createAccount("faculty", "EvaluationOtherFaculty")).token;
-  const facultyDb = openTestDatabase();
-  const facultyRecord = await dbGet(facultyDb, "SELECT id FROM faculty WHERE userId = ?", [
+  const faculty = await createAccount("faculty", "GoogleEvaluationFaculty");
+  const student = await createAccount("student", "EvaluationStudent");
+  studentToken = student.token;
+  const linkedDb = new sqlite3.Database(databasePath);
+  const facultyRow = await dbGet(linkedDb, "SELECT id FROM faculty WHERE userId = ?", [
     faculty.account.id,
   ]);
-  assert.ok(facultyRecord);
-  await dbRun(facultyDb, "UPDATE subjectOfferings SET facultyId = ? WHERE id = ?", [
-    facultyRecord.id,
+  const studentRow = await dbGet(linkedDb, "SELECT id FROM students WHERE userId = ?", [
+    student.account.id,
+  ]);
+  assert.ok(facultyRow);
+  assert.ok(studentRow);
+  await dbRun(linkedDb, "UPDATE subjectOfferings SET facultyId = ? WHERE id = ?", [
+    facultyRow.id,
     selectedOffering.id,
   ]);
-  await dbRun(facultyDb, "UPDATE subjectOfferings SET facultyId = NULL WHERE id != ?", [
-    selectedOffering.id,
-  ]);
-  await dbRun(facultyDb, "DELETE FROM enrollments WHERE subjectOfferingId != ?", [
-    selectedOffering.id,
-  ]);
-  await dbRun(facultyDb, "DELETE FROM enrollments WHERE subjectOfferingId = ?", [
-    selectedOffering.id,
-  ]);
-  students = [];
-  for (let index = 1; index <= 5; index += 1) {
-    const student = await createAccount("student", `EvaluationStudent${index}`);
-    const studentRow = await dbGet(facultyDb, "SELECT id FROM students WHERE userId = ?", [
-      student.account.id,
-    ]);
-    assert.ok(studentRow);
-    await dbRun(
-      facultyDb,
-      `INSERT INTO enrollments (id, studentId, subjectOfferingId, status, enrolledAt)
-       VALUES (?, ?, ?, 'enrolled', ?)`,
-      [crypto.randomUUID(), studentRow.id, selectedOffering.id, Date.now()],
-    );
-    students.push({ ...student, studentUuid: studentRow.id });
-  }
-  await closeDatabase(facultyDb);
-  facultyToken = faculty.token;
-
-  const createdPeriod = await request(
-    "POST",
-    "/api/evaluations/periods",
-    {
-      title: "Evaluation isolation test",
-      academicYearId: selectedOffering.academicYearId,
-      semesterId: selectedOffering.semesterId,
-      startDate: "2000-01-01",
-      endDate: "2099-12-31",
-    },
-    adminToken,
+  await dbRun(
+    linkedDb,
+    `INSERT INTO enrollments (id, studentId, subjectOfferingId, status, enrolledAt)
+     VALUES (?, ?, ?, 'enrolled', ?)`,
+    [crypto.randomUUID(), studentRow.id, selectedOffering.id, Date.now()],
   );
-  assert.equal(createdPeriod.status, 201, JSON.stringify(createdPeriod.data));
-  evaluationId = createdPeriod.data.id;
-  const categories = await request("GET", "/api/evaluations/criteria", undefined, adminToken);
-  assert.equal(categories.status, 200);
-  const newQuestion = await request(
-    "POST",
-    "/api/evaluations/questions",
-    {
-      criteriaId: categories.data[0].id,
-      questionText: "The faculty member supports student learning.",
-      isRequired: true,
-    },
-    adminToken,
-  );
-  assert.equal(newQuestion.status, 201, JSON.stringify(newQuestion.data));
-  managedQuestionId = newQuestion.data.id;
-  const activated = await request(
-    "PUT",
-    `/api/evaluations/periods/${evaluationId}`,
-    { status: "active" },
-    adminToken,
-  );
-  assert.equal(activated.status, 200, JSON.stringify(activated.data));
+  await closeDatabase(linkedDb);
 });
 
 after(async () => {
@@ -242,210 +190,71 @@ after(async () => {
     serverProcess.kill();
     await Promise.race([
       new Promise((resolve) => serverProcess.once("exit", resolve)),
-      new Promise((resolve) => setTimeout(resolve, 5000)),
+      new Promise((resolve) => setTimeout(resolve, 3000)),
     ]);
   }
   if (tempDir) await rm(tempDir, { recursive: true, force: true });
 });
 
-test("faculty evaluations enforce enrollment, anonymity, aggregation, and role permissions", async () => {
-  const unauthenticated = await request("GET", "/api/evaluations/reports");
+test("evaluation dashboards use Google Workspace and remain role protected", async () => {
+  const unauthenticated = await request("GET", "/api/evaluations/status");
   assert.equal(unauthenticated.status, 401);
-  const unauthorizedStudent = await request(
+
+  const status = await request("GET", "/api/evaluations/status", undefined, adminToken);
+  assert.equal(status.status, 200, JSON.stringify(status.data));
+  assert.equal(status.data.formConfigured, true);
+  assert.equal(status.data.sheetsConfigured, false);
+  assert.equal(status.data.periodConfigured, true);
+  assert.equal(status.data.completionTrackingAvailable, false);
+  assert.equal(status.data.totalResponses, null);
+  assert.equal(status.data.formUrl, "https://docs.google.com/forms/d/e/test-form-id/viewform");
+  assert.equal("privateKey" in status.data, false);
+  assert.equal("serviceAccountEmail" in status.data, false);
+
+  const studentWorkspaceStatus = await request(
+    "GET",
+    "/api/evaluations/status",
+    undefined,
+    studentToken,
+  );
+  assert.equal(studentWorkspaceStatus.status, 403);
+
+  const studentAssignments = await request(
+    "GET",
+    "/api/evaluations/student-assignments",
+    undefined,
+    studentToken,
+  );
+  assert.equal(studentAssignments.status, 200);
+  assert.equal(studentAssignments.data.period.status, "active");
+  assert.equal(studentAssignments.data.assignments.length, 1);
+  assert.equal(studentAssignments.data.assignments[0].academicYear, selectedOffering.academicYear);
+  assert.equal(studentAssignments.data.formUrl, status.data.formUrl);
+  assert.equal("studentId" in studentAssignments.data.assignments[0], false);
+  assert.equal("email" in studentAssignments.data.assignments[0], false);
+  assert.equal(studentAssignments.data.completionTrackingAvailable, false);
+
+  const studentReports = await request(
     "GET",
     "/api/evaluations/reports",
     undefined,
-    students[0].token,
+    studentToken,
   );
-  assert.equal(unauthorizedStudent.status, 403);
-  const forbiddenManagement = await request(
-    "POST",
-    "/api/evaluations/periods",
-    { title: "Unauthorized" },
-    students[0].token,
-  );
-  assert.equal(forbiddenManagement.status, 403);
-  const forbiddenQuestionManagement = await request(
-    "POST",
-    "/api/evaluations/questions",
-    { criteriaId: "criteria-teaching", questionText: "Unauthorized question" },
-    students[0].token,
-  );
-  assert.equal(forbiddenQuestionManagement.status, 403);
-  const activeQuestionChange = await request(
-    "PUT",
-    `/api/evaluations/questions/${managedQuestionId}`,
-    { isActive: false },
+  assert.equal(studentReports.status, 403);
+
+  const unavailableReports = await request(
+    "GET",
+    "/api/evaluations/reports",
+    undefined,
     adminToken,
   );
-  assert.equal(activeQuestionChange.status, 409);
+  assert.equal(unavailableReports.status, 503);
 
-  const periods = await request("GET", "/api/evaluations/periods", undefined, students[0].token);
-  assert.equal(periods.status, 200);
-  assert.equal(periods.data.length, 1);
-  const questionResponse = await request(
-    "GET",
-    `/api/evaluations/periods/${evaluationId}/questions`,
-    undefined,
-    students[0].token,
-  );
-  assert.equal(questionResponse.status, 200);
-  const questions = questionResponse.data;
-  assert.ok(questions.length >= 12);
-  const answersFor = (rating) =>
-    questions.map((question) => ({ questionId: question.questionId, rating }));
-  const submission = (student, answers, subjectOfferingId = selectedOffering.id) =>
-    request(
-      "POST",
-      "/api/evaluations/submit",
-      { evaluationId, subjectOfferingId, answers },
-      student.token,
-    );
-
-  const unauthorizedOffering = await request(
+  const localQuestionnaire = await request(
     "POST",
     "/api/evaluations/submit",
-    {
-      evaluationId,
-      subjectOfferingId: unrelatedOffering.id,
-      answers: answersFor(4),
-    },
-    students[0].token,
+    { answers: [{ questionId: "local", rating: 5 }] },
+    studentToken,
   );
-  assert.equal(unauthorizedOffering.status, 403);
-  const missingRequired = await submission(students[0], answersFor(4).slice(1));
-  assert.equal(missingRequired.status, 400);
-  const invalidRating = await submission(students[0], [
-    ...answersFor(4).slice(1),
-    { questionId: questions[0].questionId, rating: 6 },
-  ]);
-  assert.equal(invalidRating.status, 400);
-
-  for (let index = 0; index < 4; index += 1) {
-    const response = await submission(students[index], answersFor(index + 1));
-    assert.equal(response.status, 201, JSON.stringify(response.data));
-    assert.deepEqual(response.data, { success: true, completed: true });
-    const duplicate = await submission(students[index], answersFor(index + 1));
-    assert.equal(duplicate.status, 409);
-  }
-
-  const protectedBeforeThreshold = await request(
-    "GET",
-    `/api/evaluations/reports?evaluationId=${evaluationId}`,
-    undefined,
-    adminToken,
-  );
-  assert.equal(protectedBeforeThreshold.status, 200);
-  assert.deepEqual(protectedBeforeThreshold.data.groups, []);
-  assert.equal(protectedBeforeThreshold.data.completion[0].suppressed, true);
-  const registrarToken = (await createAccount("registrar", "EvaluationRegistrar")).token;
-  const registrarReport = await request(
-    "GET",
-    `/api/evaluations/reports?evaluationId=${evaluationId}`,
-    undefined,
-    registrarToken,
-  );
-  assert.equal(registrarReport.status, 200);
-  assert.doesNotMatch(JSON.stringify(registrarReport.data), /EvaluationStudent/i);
-  const anotherStudentStatus = await request(
-    "GET",
-    `/api/evaluations/eligible?studentId=${encodeURIComponent(students[0].account.studentId)}`,
-    undefined,
-    students[4].token,
-  );
-  assert.equal(anotherStudentStatus.status, 200);
-  assert.equal(anotherStudentStatus.data[0].completed, 0);
-
-  const fifthResponse = await submission(students[4], answersFor(5));
-  assert.equal(fifthResponse.status, 201, JSON.stringify(fifthResponse.data));
-  const report = await request(
-    "GET",
-    `/api/evaluations/reports?evaluationId=${evaluationId}`,
-    undefined,
-    adminToken,
-  );
-  assert.equal(report.status, 200);
-  assert.equal(report.data.groups.length, 1);
-  assert.equal(report.data.groups[0].responseCount, 5);
-  assert.equal(report.data.groups[0].overallAverage, 3);
-  assert.ok(report.data.groups[0].categories.every((category) => category.average === 3));
-  assert.equal(report.data.completion[0].eligibleCount, 5);
-  assert.equal(report.data.completion[0].completedCount, 5);
-  assert.equal(report.data.completion[0].percentage, 100);
-  assert.doesNotMatch(JSON.stringify(report.data), /EvaluationStudent/i);
-  assert.equal(Object.hasOwn(report.data.groups[0], "studentId"), false);
-
-  const facultyResults = await request(
-    "GET",
-    "/api/evaluations/my-results",
-    undefined,
-    facultyToken,
-  );
-  assert.equal(facultyResults.status, 200);
-  assert.equal(facultyResults.data.groups.length, 1);
-  const otherFacultyResults = await request(
-    "GET",
-    "/api/evaluations/my-results",
-    undefined,
-    otherFacultyToken,
-  );
-  assert.equal(otherFacultyResults.status, 200);
-  assert.deepEqual(otherFacultyResults.data.groups, []);
-  const studentCannotReadFacultyResults = await request(
-    "GET",
-    "/api/evaluations/my-results",
-    undefined,
-    students[0].token,
-  );
-  assert.equal(studentCannotReadFacultyResults.status, 403);
-  const studentCannotSeeAnotherStudentStatus = await request(
-    "GET",
-    "/api/evaluations/eligible",
-    undefined,
-    students[0].token,
-  );
-  assert.equal(studentCannotSeeAnotherStudentStatus.status, 200);
-  assert.equal(studentCannotSeeAnotherStudentStatus.data[0].completed, 1);
-  assert.equal(
-    Object.hasOwn(studentCannotSeeAnotherStudentStatus.data[0], "studentId"),
-    false,
-  );
-
-  const closed = await request(
-    "PUT",
-    `/api/evaluations/periods/${evaluationId}`,
-    { status: "closed" },
-    adminToken,
-  );
-  assert.equal(closed.status, 200);
-  const historicalStatus = await request(
-    "GET",
-    "/api/evaluations/eligible",
-    undefined,
-    students[0].token,
-  );
-  assert.equal(historicalStatus.status, 200);
-  assert.equal(historicalStatus.data[0].completed, 1);
-  assert.equal(historicalStatus.data[0].canSubmit, false);
-  const rejectedClosedPeriod = await submission(students[0], answersFor(3));
-  assert.equal(rejectedClosedPeriod.status, 409);
-});
-
-test("evaluation response schema contains no student identity or participation foreign key", async () => {
-  const db = openTestDatabase();
-  const responseColumns = await new Promise((resolve, reject) => {
-    db.all("PRAGMA table_info(evaluation_responses)", (error, rows) =>
-      error ? reject(error) : resolve(rows),
-    );
-  });
-  const participationColumns = await new Promise((resolve, reject) => {
-    db.all("PRAGMA table_info(evaluation_participation)", (error, rows) =>
-      error ? reject(error) : resolve(rows),
-    );
-  });
-  assert.equal(responseColumns.some((column) => /student|participation/i.test(column.name)), false);
-  assert.equal(participationColumns.some((column) => /response/i.test(column.name)), false);
-  const integrity = await dbGet(db, "PRAGMA integrity_check");
-  assert.equal(integrity.integrity_check, "ok");
-  await closeDatabase(db);
+  assert.equal(localQuestionnaire.status, 404);
 });

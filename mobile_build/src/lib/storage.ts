@@ -7,6 +7,7 @@ export interface AuthData {
   token: string;
   user: {
     id: string;
+    userId?: string;
     role: string;
     email: string;
     firstName?: string;

@@ -15,8 +15,19 @@ const API_BASE = Platform.OS === "web"
   : configuredApiBase;
 const REQUEST_TIMEOUT = 20000;
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const timeoutId = setTimeout(() => undefined, REQUEST_TIMEOUT);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
   try {
     const token = await getAuthToken();
@@ -29,13 +40,15 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
 
     let response: Response;
     try {
-      response = await Promise.race([
-        fetch(`${API_BASE}${path}`, { ...opts, headers }),
-        new Promise<Response>((_, reject) => {
-          setTimeout(() => reject(new Error(`Request timed out while contacting ${API_BASE}`)), REQUEST_TIMEOUT);
-        }),
-      ]);
+      response = await fetch(`${API_BASE}${path}`, {
+        ...opts,
+        headers,
+        signal: controller.signal,
+      });
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(`Request timed out while contacting ${API_BASE}`);
+      }
       if (error instanceof Error && error.message.startsWith("Request timed out")) throw error;
       throw new Error(`Unable to reach the backend at ${API_BASE}`);
     }
@@ -43,7 +56,7 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
     if (!response.ok) {
       let payload: { error?: string } | null = null;
       try { payload = await response.json(); } catch { /* ignore */ }
-      throw new Error(payload?.error ?? response.statusText);
+      throw new ApiError(payload?.error ?? response.statusText, response.status);
     }
 
     if (response.status === 204) return undefined as unknown as T;
@@ -64,6 +77,7 @@ export interface LoginPayload {
 export interface AuthResponse {
   token: string;
   id: string;
+  userId: string;
   role: string;
   email: string;
   firstName: string;
@@ -136,7 +150,7 @@ export interface AttendanceBulkPayload extends AttendancePayload {
 }
 
 export interface BulkAttendanceResult {
-  localId?: string;
+  localId?: string | null;
   id?: string;
   status: "created" | "updated" | "failed";
   error?: string;

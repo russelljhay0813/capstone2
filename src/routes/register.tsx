@@ -32,7 +32,7 @@ export const Route = createFileRoute("/register")({
       {
         name: "description",
         content:
-          "Apply for admission to Philtech Institute Of Arts And Technology. Submit your registration for automatic approval and enrollment.",
+          "Apply for admission to Philtech Institute Of Arts And Technology. Submit your registration for review by the Registrar's Office.",
       },
     ],
   }),
@@ -329,10 +329,6 @@ function RegisterPage() {
         lastName: data.lastName,
         suffix: data.suffix || undefined,
         email: data.email,
-        // We don't have password here, but we keep the existing one
-        // password will be kept from the student record or user context
-        password: studentRecord?.password || "",
-        educationLevel: "College" as const,
         gender: data.gender || undefined,
         dob: data.dob || undefined,
         civilStatus: data.civilStatus || undefined,
@@ -348,12 +344,11 @@ function RegisterPage() {
         parentContact: data.parentGuardianContact || undefined,
         parentRelationship: data.relationship || undefined,
         placeOfBirth: data.placeOfBirth || undefined,
-        // Academic fields for auto-enrollment (these are not stored on student)
+        // Academic choices are submitted for registrar review, not applied as account changes.
         program: data.program,
         yearLevel: data.yearLevel,
         semester: data.semester,
         academicYear: data.academicYear,
-        status: "submitted",
       };
 
       const created = await submitRegistration(payload);
@@ -381,7 +376,12 @@ function RegisterPage() {
     }
   };
 
-  if (submitted || ["submitted", "under_review"].includes(String(studentRecord?.status || ""))) {
+  if (
+    submitted ||
+    ["pending", "submitted", "under_review"].includes(
+      String(studentRecord?.status || "").toLowerCase(),
+    )
+  ) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <motion.div

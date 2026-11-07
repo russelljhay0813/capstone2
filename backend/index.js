@@ -317,8 +317,7 @@ function validateArrayField(fieldName) {
 }
 
 function getClientKey(req) {
-  const forwarded = req.get("x-forwarded-for") || "";
-  return forwarded.split(",")[0].trim() || req.ip || req.socket.remoteAddress || "unknown";
+  return req.socket.remoteAddress || req.ip || "unknown";
 }
 
 function getLoginRateLimitKey(req) {
@@ -343,24 +342,82 @@ function applyRateLimit(req, res, next) {
 }
 
 function requireRole(...allowedRoles) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const authHeader = req.get("Authorization") || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
     if (!token) return res.status(401).json({ error: "Authentication required" });
 
+    let payload;
     try {
-      const payload = jwt.verify(token, JWT_SECRET);
-      const role = String(payload.role || "").toLowerCase();
-      if (!allowedRoles.includes(role)) return res.status(403).json({ error: "Forbidden" });
-      req.userContext = {
-        role,
-        userId: String(payload.id || ""),
-        studentId: String(payload.studentId || ""),
-      };
-      return next();
+      payload = jwt.verify(token, JWT_SECRET);
     } catch {
       return res.status(401).json({ error: "Invalid or expired token" });
     }
+
+    let userContext;
+    try {
+      const role = String(payload.role || "").toLowerCase();
+      const userId = String(payload.id || "");
+      if (!userId) return res.status(401).json({ error: "Invalid or expired token" });
+
+      const user = await get(db, "SELECT id, role, status FROM users WHERE id = ?", [userId]);
+      if (role === "student") {
+        if (user) {
+          if (user.role !== "student" || user.status !== "active") {
+            return res.status(401).json({ error: "Invalid or expired token" });
+          }
+          const student = await get(
+            db,
+            "SELECT status FROM students WHERE userId = ?",
+            [user.id],
+          );
+          if (student?.status === "inactive") {
+            return res.status(401).json({ error: "Invalid or expired token" });
+          }
+        } else {
+          const student = await get(
+            db,
+            "SELECT studentId, userId, status FROM students WHERE id = ?",
+            [userId],
+          );
+          if (
+            !student ||
+            (payload.studentId && String(student.studentId) !== String(payload.studentId)) ||
+            student.status === "inactive"
+          ) {
+            return res.status(401).json({ error: "Invalid or expired token" });
+          }
+          const linkedUser = student.userId
+            ? await get(db, "SELECT role, status FROM users WHERE id = ?", [student.userId])
+            : null;
+          if (linkedUser && (linkedUser.role !== "student" || linkedUser.status !== "active")) {
+            return res.status(401).json({ error: "Invalid or expired token" });
+          }
+        }
+      } else if (!user || user.role !== role || user.status !== "active") {
+        return res.status(401).json({ error: "Invalid or expired token" });
+      }
+      if (!allowedRoles.includes(role)) return res.status(403).json({ error: "Forbidden" });
+
+      userContext = {
+        role,
+        userId,
+        studentId: String(payload.studentId || ""),
+      };
+    } catch (error) {
+      return next(error);
+    }
+
+    req.userContext = userContext;
+    return next();
+  };
+}
+
+function optionalRole(...allowedRoles) {
+  const authenticate = requireRole(...allowedRoles);
+  return (req, res, next) => {
+    if (!req.get("Authorization")) return next();
+    return authenticate(req, res, next);
   };
 }
 
@@ -369,27 +426,18 @@ function requireJwtRole(...allowedRoles) {
 }
 
 function requireSelfOrRole(resourceParamName, ...allowedRoles) {
+  const authenticate = requireRole("student", ...allowedRoles);
   return (req, res, next) => {
-    const authHeader = req.get("Authorization") || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!token) return res.status(401).json({ error: "Authentication required" });
-
-    try {
-      const payload = jwt.verify(token, JWT_SECRET);
-      const role = String(payload.role || "").toLowerCase();
-      const userId = String(payload.id || "");
-      const studentId = String(payload.studentId || "");
+    return authenticate(req, res, () => {
+      const { role, userId, studentId } = req.userContext;
       const requested = req.params[resourceParamName];
       const isSelf =
         role === "student" && requested && (userId === requested || studentId === requested);
       if (!allowedRoles.includes(role) && !isSelf) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      req.userContext = { role, userId, studentId };
       return next();
-    } catch {
-      return res.status(401).json({ error: "Invalid or expired token" });
-    }
+    });
   };
 }
 
@@ -693,7 +741,8 @@ async function getStudentCurrentContext(studentUuid) {
        sec.yearLevel,
        p.name AS program,
        sec.id AS sectionId,
-       sec.name AS section
+       sec.name AS section,
+       e.status AS enrollmentStatus
      FROM enrollments e
      JOIN subjectOfferings o ON o.id = e.subjectOfferingId
      JOIN academicYears a ON a.id = o.academicYearId
@@ -706,6 +755,23 @@ async function getStudentCurrentContext(studentUuid) {
     [studentUuid],
   );
   return row;
+}
+
+async function getStudentRegistrationApplication(studentUuid) {
+  return get(
+    db,
+    `SELECT
+       p.name AS program,
+       application.yearLevel,
+       semester.name AS semester,
+       academicYear.code AS academicYear
+     FROM studentRegistrationApplications application
+     JOIN programs p ON p.id = application.programId
+     JOIN semesters semester ON semester.id = application.semesterId
+     JOIN academicYears academicYear ON academicYear.id = application.academicYearId
+     WHERE application.studentId = ?`,
+    [studentUuid],
+  );
 }
 
 // ---------------------------------------------------------------------
@@ -1121,11 +1187,246 @@ app.get("/api/students", requireRole("admin", "registrar"), async (req, res) => 
       const refreshed = await reconcileStudentRegistrationState(row.studentId);
       const student = refreshed || row;
       const context = await getStudentCurrentContext(student.id);
-      return { ...sanitizeStudentRecord(student), ...context };
+      const application = await getStudentRegistrationApplication(student.id);
+      return { ...sanitizeStudentRecord(student), ...context, ...application };
     }),
   );
   const result = paginateResults(reconciledRows, req.query.page, req.query.limit);
   res.json(result);
+});
+
+const STUDENT_PROFILE_FIELDS = {
+  firstName: 100,
+  middleName: 100,
+  lastName: 100,
+  suffix: 30,
+  gender: 20,
+  dob: 10,
+  civilStatus: 40,
+  nationality: 80,
+  religion: 80,
+  placeOfBirth: 150,
+  email: 254,
+  contactNumber: 20,
+  address: 250,
+  barangay: 100,
+  city: 100,
+  province: 100,
+  region: 100,
+  zip: 4,
+  fatherName: 150,
+  fatherOccupation: 100,
+  fatherContact: 20,
+  motherName: 150,
+  motherOccupation: 100,
+  motherContact: 20,
+  guardianName: 150,
+  guardianOccupation: 100,
+  guardianContact: 20,
+  guardianRelation: 60,
+};
+const STUDENT_PROFILE_PROTECTED_FIELDS = new Set([
+  "id",
+  "studentid",
+  "userid",
+  "role",
+  "password",
+  "educationlevel",
+  "previousschool",
+  "lastgrade",
+  "program",
+  "programid",
+  "course",
+  "courseid",
+  "yearlevel",
+  "section",
+  "sectionid",
+  "semester",
+  "semesterid",
+  "academicyear",
+  "academicyearid",
+  "enrollment",
+  "enrollmentid",
+  "enrollmentstatus",
+  "enrollmentrecords",
+  "registrationstatus",
+  "applicationstatus",
+  "reviewstatus",
+  "reviewedby",
+  "approvalstatus",
+  "status",
+  "assignedsubjects",
+  "subjects",
+  "academicrecords",
+  "facultyassignments",
+  "faculty",
+  "grades",
+  "attendancerecords",
+  "attendance",
+  "submittedat",
+  "reviewedat",
+  "reviewnote",
+]);
+const STUDENT_PROFILE_PHONE_FIELDS = new Set([
+  "contactNumber",
+  "fatherContact",
+  "motherContact",
+  "guardianContact",
+]);
+const STUDENT_REGISTRATION_FIELD_LIMITS = {
+  ...STUDENT_PROFILE_FIELDS,
+  educationLevel: 30,
+  previousSchool: 200,
+  lastGrade: 50,
+  parentName: 150,
+  parentContact: 20,
+  parentRelationship: 60,
+  parentAddress: 250,
+  emergencyName: 150,
+  emergencyContact: 20,
+  emergencyAddress: 250,
+  emergencyRelation: 60,
+  program: 200,
+  yearLevel: 20,
+  semester: 50,
+  academicYear: 15,
+};
+
+function normalizeProfileFieldName(field) {
+  return String(field).toLowerCase().replace(/[-_\s]/g, "");
+}
+
+function isValidProfileDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+app.put("/api/students/me/profile", requireRole("student"), async (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return sendError(res, 400, "A profile object is required");
+  }
+
+  const suppliedFields = Object.keys(body);
+  const protectedField = suppliedFields.find((field) =>
+    STUDENT_PROFILE_PROTECTED_FIELDS.has(normalizeProfileFieldName(field)),
+  );
+  if (protectedField) {
+    return sendError(res, 403, `${protectedField} cannot be changed by a student`);
+  }
+
+  const unknownFields = suppliedFields.filter((field) => !Object.hasOwn(STUDENT_PROFILE_FIELDS, field));
+  if (unknownFields.length > 0) {
+    return sendError(res, 400, "Unsupported profile fields", {
+      fields: Object.fromEntries(unknownFields.map((field) => [field, "This field cannot be updated."])),
+    });
+  }
+  if (suppliedFields.length === 0) {
+    return sendError(res, 400, "At least one personal information field is required");
+  }
+
+  const identity = req.userContext;
+  let student = identity.userId
+    ? await get(db, "SELECT * FROM students WHERE id = ?", [identity.userId])
+    : null;
+  if (!student && identity.userId) {
+    student = await get(db, "SELECT * FROM students WHERE userId = ?", [identity.userId]);
+  }
+  if (!student || (identity.studentId && student.studentId !== identity.studentId)) {
+    return sendError(res, 403, "Student profile not found for the authenticated account");
+  }
+
+  const errors = {};
+  const updates = {};
+  for (const field of suppliedFields) {
+    const rawValue = body[field];
+    if (rawValue !== null && typeof rawValue !== "string") {
+      errors[field] = "Enter a text value.";
+      continue;
+    }
+
+    const value = typeof rawValue === "string" ? rawValue.trim() : "";
+    if (value.length > STUDENT_PROFILE_FIELDS[field]) {
+      errors[field] = `Must be ${STUDENT_PROFILE_FIELDS[field]} characters or fewer.`;
+      continue;
+    }
+
+    if ((field === "firstName" || field === "lastName") && !value) {
+      errors[field] = "This field is required.";
+      continue;
+    }
+
+    if (field === "email" && !value) {
+      errors[field] = "This field is required.";
+      continue;
+    }
+
+    if (field === "gender" && value && !["Male", "Female", "Other"].includes(value)) {
+      errors[field] = "Choose Male, Female, or Other.";
+      continue;
+    }
+
+    if (field === "dob" && value && (!isValidProfileDate(value) || value > new Date().toISOString().slice(0, 10))) {
+      errors[field] = "Enter a valid date of birth that is not in the future.";
+      continue;
+    }
+
+    if (field === "email" && value && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
+      errors[field] = "Enter a valid email address.";
+      continue;
+    }
+
+    if (STUDENT_PROFILE_PHONE_FIELDS.has(field) && value) {
+      const digits = value.replace(/\D/g, "");
+      if (!/^\+?[0-9][0-9()\-\s]{5,18}[0-9]$/.test(value) || digits.length < 7 || digits.length > 15) {
+        errors[field] = "Enter a valid contact number.";
+        continue;
+      }
+    }
+
+    if (field === "zip" && value && !/^\d{4}$/.test(value)) {
+      errors[field] = "Enter a valid 4-digit ZIP code.";
+      continue;
+    }
+
+    updates[field] = field === "email" ? value.toLowerCase() || null : value || null;
+  }
+
+  const finalFirstName = updates.firstName ?? student.firstName;
+  const finalLastName = updates.lastName ?? student.lastName;
+  const finalEmail = Object.hasOwn(updates, "email") ? updates.email : student.email;
+  if (!String(finalFirstName || "").trim()) errors.firstName = "This field is required.";
+  if (!String(finalLastName || "").trim()) errors.lastName = "This field is required.";
+  if (!finalEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(finalEmail)) {
+    errors.email = "Enter a valid email address.";
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return sendError(res, 400, "Please correct the highlighted fields.", errors);
+  }
+
+  const duplicateEmail = await get(
+    db,
+    "SELECT id FROM students WHERE LOWER(email) = LOWER(?) AND id != ? LIMIT 1",
+    [finalEmail, student.id],
+  );
+  if (duplicateEmail) {
+    return sendError(res, 400, "Please correct the highlighted fields.", {
+      email: "This email address is already in use.",
+    });
+  }
+
+  const fieldsToUpdate = Object.keys(updates);
+  await run(
+    db,
+    `UPDATE students SET ${fieldsToUpdate.map((field) => `${field} = ?`).join(", ")} WHERE id = ?`,
+    [...fieldsToUpdate.map((field) => updates[field]), student.id],
+  );
+
+  const updatedStudent = await get(db, "SELECT * FROM students WHERE id = ?", [student.id]);
+  const academicContext = await getStudentCurrentContext(student.id);
+  res.json({ ...sanitizeStudentRecord(updatedStudent), ...academicContext });
 });
 
 app.get(
@@ -1136,7 +1437,8 @@ app.get(
     if (!row) return res.status(404).json({ error: "Student not found" });
     const reconciled = await reconcileStudentRegistrationState(req.params.studentId);
     const context = await getStudentCurrentContext((reconciled || row).id);
-    res.json({ ...sanitizeStudentRecord(reconciled || row), ...context });
+    const application = await getStudentRegistrationApplication((reconciled || row).id);
+    res.json({ ...sanitizeStudentRecord(reconciled || row), ...context, ...application });
   },
 );
 
@@ -1340,6 +1642,127 @@ app.put(
   "/api/students/:studentId",
   requireSelfOrRole("studentId", "admin", "registrar"),
   async (req, res) => {
+    if (req.userContext.role === "student") {
+      const body = req.body;
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return sendError(res, 400, "A profile object is required");
+      }
+
+      const suppliedFields = Object.keys(body);
+      const protectedField = suppliedFields.find((field) =>
+        STUDENT_PROFILE_PROTECTED_FIELDS.has(normalizeProfileFieldName(field)),
+      );
+      if (protectedField) {
+        return sendError(res, 403, `${protectedField} cannot be changed by a student`);
+      }
+      const unsupportedFields = suppliedFields.filter(
+        (field) => !Object.hasOwn(STUDENT_PROFILE_FIELDS, field),
+      );
+      if (unsupportedFields.length > 0) {
+        return sendError(res, 400, "Unsupported profile fields", {
+          fields: Object.fromEntries(
+            unsupportedFields.map((field) => [field, "This field cannot be updated."]),
+          ),
+        });
+      }
+      if (suppliedFields.length === 0) {
+        return sendError(res, 400, "At least one personal information field is required");
+      }
+
+      const identity = req.userContext;
+      let student = await get(db, "SELECT * FROM students WHERE id = ?", [identity.userId]);
+      if (!student) {
+        student = await get(db, "SELECT * FROM students WHERE userId = ?", [identity.userId]);
+      }
+      if (!student || (identity.studentId && student.studentId !== identity.studentId)) {
+        return sendError(res, 403, "Student profile not found for the authenticated account");
+      }
+
+      const errors = {};
+      const updates = {};
+      for (const field of suppliedFields) {
+        const rawValue = body[field];
+        if (rawValue !== null && typeof rawValue !== "string") {
+          errors[field] = "Enter a text value.";
+          continue;
+        }
+
+        const value = typeof rawValue === "string" ? rawValue.trim() : "";
+        if (value.length > STUDENT_PROFILE_FIELDS[field]) {
+          errors[field] = `Must be ${STUDENT_PROFILE_FIELDS[field]} characters or fewer.`;
+          continue;
+        }
+        if ((field === "firstName" || field === "lastName" || field === "email") && !value) {
+          errors[field] = "This field is required.";
+          continue;
+        }
+        if (field === "gender" && value && !["Male", "Female", "Other"].includes(value)) {
+          errors[field] = "Choose Male, Female, or Other.";
+          continue;
+        }
+        if (
+          field === "dob" &&
+          value &&
+          (!isValidProfileDate(value) || value > new Date().toISOString().slice(0, 10))
+        ) {
+          errors[field] = "Enter a valid date of birth that is not in the future.";
+          continue;
+        }
+        if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
+          errors[field] = "Enter a valid email address.";
+          continue;
+        }
+        if (STUDENT_PROFILE_PHONE_FIELDS.has(field) && value) {
+          const digits = value.replace(/\D/g, "");
+          if (
+            !/^\+?[0-9][0-9()\-\s]{5,18}[0-9]$/.test(value) ||
+            digits.length < 7 ||
+            digits.length > 15
+          ) {
+            errors[field] = "Enter a valid contact number.";
+            continue;
+          }
+        }
+        if (field === "zip" && value && !/^\d{4}$/.test(value)) {
+          errors[field] = "Enter a valid 4-digit ZIP code.";
+          continue;
+        }
+
+        updates[field] = field === "email" ? value.toLowerCase() : value || null;
+      }
+      if (Object.keys(errors).length > 0) {
+        return sendError(res, 400, "Please correct the highlighted fields.", errors);
+      }
+
+      const finalFirstName = updates.firstName ?? student.firstName;
+      const finalLastName = updates.lastName ?? student.lastName;
+      const finalEmail = updates.email ?? student.email;
+      if (!finalFirstName || !finalLastName || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(finalEmail || "")) {
+        return sendError(res, 400, "A valid name and email address are required");
+      }
+      if (updates.email) {
+        const duplicateEmail = await get(
+          db,
+          "SELECT id FROM students WHERE LOWER(email) = LOWER(?) AND id != ? LIMIT 1",
+          [updates.email, student.id],
+        );
+        if (duplicateEmail) {
+          return sendError(res, 400, "Please correct the highlighted fields.", {
+            email: "This email address is already in use.",
+          });
+        }
+      }
+
+      const fieldsToUpdate = Object.keys(updates);
+      await run(
+        db,
+        `UPDATE students SET ${fieldsToUpdate.map((field) => `${field} = ?`).join(", ")} WHERE id = ?`,
+        [...fieldsToUpdate.map((field) => updates[field]), student.id],
+      );
+      const updatedStudent = await get(db, "SELECT * FROM students WHERE id = ?", [student.id]);
+      return res.json(sanitizeStudentRecord(updatedStudent));
+    }
+
     const existing = await get(db, "SELECT * FROM students WHERE studentId = ?", [req.params.studentId]);
     if (!existing) return res.status(404).json({ error: "Student not found" });
 
@@ -1494,6 +1917,204 @@ app.get("/api/email-exists", async (req, res) => {
   res.json({ exists: !!existing });
 });
 
+app.post("/api/students/me/registration", requireRole("student"), async (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return sendError(res, 400, "A registration object is required");
+  }
+
+  const suppliedFields = Object.keys(body);
+  const applicationFields = new Set(["program", "yearLevel", "semester", "academicYear"]);
+  const forbiddenField = suppliedFields.find(
+    (field) =>
+      STUDENT_PROFILE_PROTECTED_FIELDS.has(normalizeProfileFieldName(field)) &&
+      !applicationFields.has(field),
+  );
+  if (forbiddenField) {
+    return sendError(res, 403, `${forbiddenField} cannot be changed by a student`);
+  }
+  const unsupportedFields = suppliedFields.filter(
+    (field) => !Object.hasOwn(STUDENT_REGISTRATION_FIELD_LIMITS, field),
+  );
+  if (unsupportedFields.length > 0) {
+    return sendError(res, 400, "Unsupported registration fields", {
+      fields: Object.fromEntries(
+        unsupportedFields.map((field) => [field, "This field is not accepted."]),
+      ),
+    });
+  }
+
+  const validationResult = validateRegistrationPayload(body);
+  if (!validationResult.isValid) {
+    return sendError(
+      res,
+      400,
+      "Validation error",
+      validationResult.missing.map(formatRegistrationValidationMessage),
+    );
+  }
+
+  const errors = {};
+  const updates = {};
+  for (const field of suppliedFields) {
+    const rawValue = body[field];
+    if (typeof rawValue !== "string") {
+      errors[field] = "Enter a text value.";
+      continue;
+    }
+
+    const value = rawValue.trim();
+    if (value.length > STUDENT_REGISTRATION_FIELD_LIMITS[field]) {
+      errors[field] = `Must be ${STUDENT_REGISTRATION_FIELD_LIMITS[field]} characters or fewer.`;
+      continue;
+    }
+    if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) {
+      errors[field] = "Enter a valid email address.";
+      continue;
+    }
+    if (
+      field === "dob" &&
+      (!isValidProfileDate(value) || value > new Date().toISOString().slice(0, 10))
+    ) {
+      errors[field] = "Enter a valid date of birth that is not in the future.";
+      continue;
+    }
+    if (field === "gender" && !["Male", "Female", "Other", "Prefer not to say"].includes(value)) {
+      errors[field] = "Choose a supported gender value.";
+      continue;
+    }
+    if (STUDENT_PROFILE_PHONE_FIELDS.has(field) || ["parentContact", "emergencyContact"].includes(field)) {
+      const digits = value.replace(/\D/g, "");
+      if (
+        value &&
+        (!/^\+?[0-9][0-9()\-\s]{5,18}[0-9]$/.test(value) ||
+          digits.length < 7 ||
+          digits.length > 15)
+      ) {
+        errors[field] = "Enter a valid contact number.";
+        continue;
+      }
+    }
+    if (field === "zip" && !/^\d{4}$/.test(value)) {
+      errors[field] = "Enter a valid 4-digit ZIP code.";
+      continue;
+    }
+
+    if (!applicationFields.has(field)) {
+      updates[field] =
+        field === "email"
+          ? value.toLowerCase()
+          : field === "gender" && value === "Prefer not to say"
+            ? "Other"
+            : value || null;
+    }
+  }
+  if (Object.keys(errors).length > 0) {
+    return sendError(res, 400, "Please correct the highlighted fields.", errors);
+  }
+
+  const identity = req.userContext;
+  let student = await get(db, "SELECT * FROM students WHERE id = ?", [identity.userId]);
+  if (!student) {
+    student = await get(db, "SELECT * FROM students WHERE userId = ?", [identity.userId]);
+  }
+  if (!student || (identity.studentId && student.studentId !== identity.studentId)) {
+    return sendError(res, 403, "Student profile not found for the authenticated account");
+  }
+  if (!["pending", "rejected", "in_progress", "not_started", "submitted", "under_review"].includes(student.status)) {
+    return sendError(res, 409, "This registration is no longer available for submission");
+  }
+
+  const duplicateEmail = await get(
+    db,
+    "SELECT id FROM students WHERE LOWER(email) = LOWER(?) AND id != ? LIMIT 1",
+    [updates.email, student.id],
+  );
+  if (duplicateEmail) {
+    return sendError(res, 400, "Please correct the highlighted fields.", {
+      email: "This email address is already in use.",
+    });
+  }
+
+  const program = await get(db, "SELECT id FROM programs WHERE name = ? AND status = 'active'", [
+    body.program.trim(),
+  ]);
+  if (!program) return sendError(res, 400, "Program not found");
+  const academicYear = await get(
+    db,
+    "SELECT id FROM academicYears WHERE code = ? AND status = 'active'",
+    [body.academicYear.trim()],
+  );
+  if (!academicYear) return sendError(res, 400, "Academic year not found");
+  const semester = await get(
+    db,
+    "SELECT id, code, name FROM semesters WHERE academicYearId = ? AND (code = ? OR name = ? OR code LIKE ?)",
+    [academicYear.id, body.semester.trim(), body.semester.trim(), `%${body.semester.trim()}%`],
+  );
+  if (!semester) return sendError(res, 400, "Semester not found");
+  const curriculum = await get(
+    db,
+    "SELECT subjectId FROM curriculum WHERE programId = ? AND yearLevel = ? AND semester IN (?, ?, ?) LIMIT 1",
+    [
+      program.id,
+      body.yearLevel.trim(),
+      body.semester.trim(),
+      String(semester.code || "").split(" (")[0],
+      semester.name === "First Semester"
+        ? "1st Semester"
+        : semester.name === "Second Semester"
+          ? "2nd Semester"
+          : semester.name,
+    ],
+  );
+  if (!curriculum) return sendError(res, 400, "No curriculum found for this year and semester");
+
+  const fieldsToUpdate = Object.keys(updates);
+  const submittedAt = Date.now();
+  await withTransaction(db, async () => {
+    await run(
+      db,
+      `UPDATE students SET ${fieldsToUpdate.map((field) => `${field} = ?`).join(", ")},
+        status = 'pending', submittedAt = ?, reviewedAt = NULL, reviewNote = NULL
+       WHERE id = ?`,
+      [...fieldsToUpdate.map((field) => updates[field]), submittedAt, student.id],
+    );
+    await run(
+      db,
+      `INSERT INTO studentRegistrationApplications
+        (studentId, programId, yearLevel, semesterId, academicYearId, submittedAt)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(studentId) DO UPDATE SET
+         programId = excluded.programId,
+         yearLevel = excluded.yearLevel,
+         semesterId = excluded.semesterId,
+         academicYearId = excluded.academicYearId,
+         submittedAt = excluded.submittedAt`,
+      [student.id, program.id, body.yearLevel.trim(), semester.id, academicYear.id, submittedAt],
+    );
+  });
+
+  const updatedStudent = await get(db, "SELECT * FROM students WHERE id = ?", [student.id]);
+  const registrationApplication = await getStudentRegistrationApplication(student.id);
+  await createActivityLog(
+    identity.userId,
+    "student",
+    "Submitted registration",
+    `${student.studentId} submitted registration`,
+    "student",
+  );
+  await notifyRegistrarUsers(
+    "registration",
+    "New Registration Submitted",
+    "A student submitted a registration application.",
+    student.studentId,
+  );
+  return res.json({
+    ...sanitizeStudentRecord(updatedStudent),
+    ...registrationApplication,
+  });
+});
+
 app.post(
   "/api/students/login",
   applyRateLimit,
@@ -1503,6 +2124,15 @@ app.post(
     const student = await get(db, "SELECT * FROM students WHERE LOWER(email) = LOWER(?)", [email]);
     if (!student || !verifyPassword(password, student.password)) {
       await createActivityLog("system", "system", "Failed student login", email, "student");
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    const linkedUser = student.userId
+      ? await get(db, "SELECT role, status FROM users WHERE id = ?", [student.userId])
+      : null;
+    if (
+      student.status === "inactive" ||
+      (linkedUser && (linkedUser.role !== "student" || linkedUser.status !== "active"))
+    ) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -1699,6 +2329,13 @@ app.get("/api/grades", requireRole("admin", "faculty", "registrar", "student"), 
 
   let where = "1=1";
   const params = [];
+  if (identity.role === "faculty") {
+    where += ` AND g.subjectOfferingId IN (
+      SELECT id FROM subjectOfferings
+      WHERE facultyId = (SELECT id FROM faculty WHERE id = ? OR userId = ?)
+    )`;
+    params.push(identity.userId, identity.userId);
+  }
   if (subjectOfferingId) {
     if (identity.role === "faculty") {
       const offering = await get(db, "SELECT facultyId FROM subjectOfferings WHERE id = ?", [subjectOfferingId]);
@@ -1744,6 +2381,11 @@ app.post("/api/grades", requireRole("admin", "faculty"), async (req, res) => {
   if (!studentId || !subjectOfferingId || grade === undefined) {
     return res.status(400).json({ error: "studentId, subjectOfferingId, and grade are required" });
   }
+  if (status !== undefined && !["draft", "submitted"].includes(status)) {
+    return status === "finalized"
+      ? res.status(403).json({ error: "Grades must be finalized through the authorized workflow" })
+      : res.status(400).json({ error: "Invalid grade status" });
+  }
 
   const studentUuid = await resolveStudentUuid(studentId);
   if (!studentUuid) return res.status(404).json({ error: "Student not found" });
@@ -1755,6 +2397,14 @@ app.post("/api/grades", requireRole("admin", "faculty"), async (req, res) => {
   if (req.userContext.role === "faculty" && !(await facultyOwnsOffering(offering.facultyId, req.userContext.userId))) {
     return res.status(403).json({ error: "Forbidden" });
   }
+  if (req.userContext.role === "faculty") {
+    const enrollment = await get(
+      db,
+      "SELECT id FROM enrollments WHERE studentId = ? AND subjectOfferingId = ? AND status = 'enrolled'",
+      [studentUuid, subjectOfferingId],
+    );
+    if (!enrollment) return res.status(403).json({ error: "Student is not enrolled in this offering" });
+  }
 
   const existing = await get(
     db,
@@ -1763,6 +2413,9 @@ app.post("/api/grades", requireRole("admin", "faculty"), async (req, res) => {
   );
 
   if (existing) {
+    if (existing.status === "finalized") {
+      return res.status(409).json({ error: "Finalized grades cannot be changed through this endpoint" });
+    }
     await run(
       db,
       `UPDATE grades SET grade = ?, remarks = ?, period = COALESCE(?, period), type = COALESCE(?, type), component = COALESCE(?, component), status = COALESCE(?, status), submittedAt = ? WHERE id = ?`,
@@ -1772,7 +2425,7 @@ app.post("/api/grades", requireRole("admin", "faculty"), async (req, res) => {
         period || null,
         type || null,
         component || null,
-        status || "draft",
+        status ?? null,
         Date.now(),
         existing.id,
       ],
@@ -1844,6 +2497,13 @@ app.delete("/api/grades", requireRole("admin", "faculty"), async (req, res) => {
   const studentUuid = await resolveStudentUuid(studentId);
   if (!studentUuid) return res.status(404).json({ error: "Student not found" });
 
+  if (req.userContext.role === "faculty") {
+    const offering = await get(db, "SELECT facultyId FROM subjectOfferings WHERE id = ?", [subjectOfferingId]);
+    if (!offering || !(await facultyOwnsOffering(offering.facultyId, req.userContext.userId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+  }
+
   await run(db, "DELETE FROM grades WHERE studentId = ? AND subjectOfferingId = ?", [
     studentUuid,
     subjectOfferingId,
@@ -1891,6 +2551,13 @@ app.get("/api/attendance", requireJwtRole("admin", "faculty", "registrar", "stud
     where += " AND a.subjectOfferingId = ?";
     params.push(subjectOfferingId);
   }
+  if (identity.role === "faculty") {
+    where += ` AND a.subjectOfferingId IN (
+      SELECT id FROM subjectOfferings
+      WHERE facultyId = (SELECT id FROM faculty WHERE id = ? OR userId = ?)
+    )`;
+    params.push(identity.userId, identity.userId);
+  }
   if (identity.role === "student") {
     const selfUuid = await resolveStudentUuid(identity.studentId || identity.userId);
     if (!selfUuid) return res.status(403).json({ error: "Forbidden" });
@@ -1934,11 +2601,12 @@ app.get("/api/attendance", requireJwtRole("admin", "faculty", "registrar", "stud
 });
 
 app.post("/api/attendance", requireJwtRole("admin", "faculty"), async (req, res) => {
-  const { studentId, subjectOfferingId, date, status, time } = req.body;
+  const { studentId, subjectOfferingId, date, status, time } = req.body ?? {};
   if (!studentId || !subjectOfferingId || !date || !status) {
     return sendError(res, 400, "studentId, subjectOfferingId, date, and status are required");
   }
-  if (!ATTENDANCE_STATUSES.has(String(status).toLowerCase())) {
+  const normalizedStatus = String(status).toLowerCase();
+  if (!ATTENDANCE_STATUSES.has(normalizedStatus)) {
     return sendError(res, 400, "status must be present, late, absent, or excused");
   }
   if (!isValidAttendanceDate(date)) return sendError(res, 400, "date must be a valid ISO date");
@@ -1951,51 +2619,32 @@ app.post("/api/attendance", requireJwtRole("admin", "faculty"), async (req, res)
 
   const existing = await get(
     db,
-    "SELECT * FROM attendance WHERE studentId = ? AND subjectOfferingId = ? AND date = ?",
+    "SELECT id FROM attendance WHERE studentId = ? AND subjectOfferingId = ? AND date = ?",
     [studentUuid, subjectOfferingId, date],
   );
-
-  if (existing) {
-    await run(
-      db,
-      `UPDATE attendance SET status = ?, time = ?, updatedAt = ? WHERE id = ?`,
-      [status, time || null, Date.now(), existing.id],
-    );
-    const updated = await get(db, "SELECT * FROM attendance WHERE id = ?", [existing.id]);
-    await createActivityLog(
-      req.userContext.userId,
-      req.userContext.role || "faculty",
-      "Updated attendance",
-      `${studentId} / ${subjectOfferingId} / ${date} -> ${status}`,
-      req.userContext.role,
-    );
-    return res.json(updated);
-  }
-
-  const entry = {
-    id: crypto.randomUUID(),
-    studentId: studentUuid,
-    subjectOfferingId,
-    date,
-    time: time || null,
-    status,
-    updatedAt: Date.now(),
-  };
+  const entryId = existing?.id ?? crypto.randomUUID();
+  const updatedAt = Date.now();
   await run(
     db,
     `INSERT INTO attendance (id, studentId, subjectOfferingId, date, time, status, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [entry.id, entry.studentId, entry.subjectOfferingId, entry.date, entry.time, entry.status, entry.updatedAt],
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(studentId, subjectOfferingId, date) DO UPDATE SET
+       time = excluded.time, status = excluded.status, updatedAt = excluded.updatedAt`,
+    [entryId, studentUuid, subjectOfferingId, date, time || null, normalizedStatus, updatedAt],
   );
-  const created = await get(db, "SELECT * FROM attendance WHERE id = ?", [entry.id]);
+  const stored = await get(
+    db,
+    "SELECT * FROM attendance WHERE studentId = ? AND subjectOfferingId = ? AND date = ?",
+    [studentUuid, subjectOfferingId, date],
+  );
   await createActivityLog(
     req.userContext.userId,
     req.userContext.role || "faculty",
-    "Created attendance",
-    `${studentId} / ${subjectOfferingId} / ${date} -> ${status}`,
+    existing ? "Updated attendance" : "Created attendance",
+    `${studentId} / ${subjectOfferingId} / ${date} -> ${normalizedStatus}`,
     req.userContext.role,
   );
-  res.status(201).json(created);
+  res.status(existing ? 200 : 201).json(stored);
 });
 
 // Bulk attendance - adapt similarly
@@ -2007,13 +2656,18 @@ app.post("/api/attendance/bulk", requireJwtRole("admin", "faculty"), async (req,
 
   const results = [];
   for (const record of records) {
+    if (!record || typeof record !== "object" || Array.isArray(record)) {
+      results.push({ localId: null, status: "failed", error: "Invalid attendance record" });
+      continue;
+    }
     const localId = record.localId || null;
     const { studentId, subjectOfferingId, date, status, time } = record;
     if (!studentId || !subjectOfferingId || !date || !status) {
       results.push({ localId, status: "failed", error: "Missing required fields" });
       continue;
     }
-    if (!ATTENDANCE_STATUSES.has(String(status).toLowerCase())) {
+    const normalizedStatus = String(status).toLowerCase();
+    if (!ATTENDANCE_STATUSES.has(normalizedStatus)) {
       results.push({ localId, status: "failed", error: "Invalid attendance status" });
       continue;
     }
@@ -2036,37 +2690,25 @@ app.post("/api/attendance/bulk", requireJwtRole("admin", "faculty"), async (req,
 
     const existing = await get(
       db,
-      "SELECT * FROM attendance WHERE studentId = ? AND subjectOfferingId = ? AND date = ?",
+      "SELECT id FROM attendance WHERE studentId = ? AND subjectOfferingId = ? AND date = ?",
       [studentUuid, subjectOfferingId, date],
     );
-
-    if (existing) {
-      await run(
-        db,
-        `UPDATE attendance SET status = ?, time = ?, updatedAt = ? WHERE id = ?`,
-        [status, time || null, Date.now(), existing.id],
-      );
-      const updated = await get(db, "SELECT * FROM attendance WHERE id = ?", [existing.id]);
-      results.push({ localId, id: existing.id, status: "updated" });
-    } else {
-      const entry = {
-        id: crypto.randomUUID(),
-        studentId: studentUuid,
-        subjectOfferingId,
-        date,
-        time: time || null,
-        status,
-        updatedAt: Date.now(),
-      };
-      await run(
-        db,
-        `INSERT INTO attendance (id, studentId, subjectOfferingId, date, time, status, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [entry.id, entry.studentId, entry.subjectOfferingId, entry.date, entry.time, entry.status, entry.updatedAt],
-      );
-      const created = await get(db, "SELECT * FROM attendance WHERE id = ?", [entry.id]);
-      results.push({ localId, id: entry.id, status: "created" });
-    }
+    const entryId = existing?.id ?? crypto.randomUUID();
+    const updatedAt = Date.now();
+    await run(
+      db,
+      `INSERT INTO attendance (id, studentId, subjectOfferingId, date, time, status, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(studentId, subjectOfferingId, date) DO UPDATE SET
+         time = excluded.time, status = excluded.status, updatedAt = excluded.updatedAt`,
+      [entryId, studentUuid, subjectOfferingId, date, time || null, normalizedStatus, updatedAt],
+    );
+    const stored = await get(
+      db,
+      "SELECT id FROM attendance WHERE studentId = ? AND subjectOfferingId = ? AND date = ?",
+      [studentUuid, subjectOfferingId, date],
+    );
+    results.push({ localId, id: stored.id, status: existing ? "updated" : "created" });
   }
 
   await createActivityLog(
@@ -2110,7 +2752,7 @@ app.get(
     }
     const rows = await all(
       db,
-      `SELECT s.*
+      `SELECT s.id, s.studentId, s.firstName, s.lastName
        FROM enrollments e
        JOIN students s ON s.id = e.studentId
        WHERE e.subjectOfferingId = ?
@@ -2214,7 +2856,7 @@ app.delete("/api/curriculum/:id", requireRole("admin", "registrar"), async (req,
 // ---------------------------------------------------------------------
 // STUDENT ELIGIBILITY / RE-ENROLLMENT
 // ---------------------------------------------------------------------
-app.post("/api/students/:studentId/reenroll", async (req, res) => {
+app.post("/api/students/:studentId/reenroll", requireRole("admin", "registrar"), async (req, res) => {
   const { studentId } = req.params;
   const student = await get(db, "SELECT id, studentId FROM students WHERE studentId = ?", [studentId]);
   if (!student) return res.status(404).json({ error: "Student not found" });
@@ -2429,6 +3071,12 @@ app.post(
   validateRequiredFields(["firstName", "lastName", "role"]),
   async (req, res) => {
     const { role, firstName, lastName, email, password, program, yearLevel } = req.body;
+    if (!["admin", "faculty", "registrar", "student"].includes(role)) {
+      return res.status(400).json({ error: "Invalid role" });
+    }
+    if (role === "admin" && req.userContext.role !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     const isStaff = role === "faculty" || role === "registrar";
     if (!isStaff && (!email || !String(email).trim())) {
       return res.status(400).json({ error: "Email is required for student accounts" });
@@ -2540,12 +3188,18 @@ app.post("/api/users/login", applyRateLimit, async (req, res) => {
   const user = await get(
     db,
     `SELECT u.id, f.id AS facultyId, u.userId, u.username, u.firstName, u.middleName, u.lastName, u.email,
-            u.password, u.role, u.status, u.createdAt, u.temporaryPassword, s.studentId
+            u.password, u.role, u.status, u.createdAt, u.temporaryPassword, s.studentId,
+            s.status AS studentStatus
      FROM users u LEFT JOIN faculty f ON f.userId = u.id LEFT JOIN students s ON s.userId = u.id
      WHERE LOWER(u.email) = LOWER(?) OR LOWER(u.username) = LOWER(?)`,
     [email, email],
   );
-  if (!user || !verifyPassword(password, user.password)) {
+  if (
+    !user ||
+    !verifyPassword(password, user.password) ||
+    user.status !== "active" ||
+    (user.role === "student" && user.studentStatus === "inactive")
+  ) {
     return res.status(401).json({ error: "Invalid credentials" });
   }
   res.json({ ...sanitizeUserRecord(user), token: generateJwtToken(user) });
@@ -2598,10 +3252,28 @@ app.delete("/api/notifications", requireRole("admin", "faculty", "registrar", "s
 // ---------------------------------------------------------------------
 // ANNOUNCEMENTS
 // ---------------------------------------------------------------------
-app.get("/api/announcements", async (_req, res) => {
-  const rows = await all(db, "SELECT * FROM announcements ORDER BY createdAt DESC");
-  res.json(rows);
-});
+app.get(
+  "/api/announcements",
+  optionalRole("admin", "registrar", "faculty", "student"),
+  async (req, res) => {
+    const role = req.userContext?.role;
+    const audiences =
+      role === "student"
+        ? ["all", "student"]
+        : role === "faculty"
+          ? ["all", "faculty"]
+          : role === "admin" || role === "registrar"
+            ? ["all", "student", "faculty"]
+            : ["all"];
+    const placeholders = audiences.map(() => "?").join(", ");
+    const rows = await all(
+      db,
+      `SELECT * FROM announcements WHERE audience IN (${placeholders}) ORDER BY createdAt DESC`,
+      audiences,
+    );
+    res.json(rows);
+  },
+);
 
 app.post("/api/announcements", requireRole("admin", "registrar"), async (req, res) => {
   const { title, body, category, audience, subjectId, authorName, authorRole } = req.body;
@@ -2611,6 +3283,9 @@ app.post("/api/announcements", requireRole("admin", "registrar"), async (req, re
   const supportedCategories = ["general", "academic", "event", "urgent"];
   if (!supportedCategories.includes(category)) {
     return res.status(400).json({ error: "category must be one of: general, academic, event, urgent" });
+  }
+  if (!["all", "student", "faculty"].includes(audience || "all")) {
+    return res.status(400).json({ error: "audience must be one of: all, student, faculty" });
   }
   const id = `a-${Date.now()}`;
   const announcement = {
@@ -2642,13 +3317,17 @@ app.put("/api/announcements/:id", requireRole("admin", "registrar"), async (req,
   if (!supportedCategories.includes(category)) {
     return res.status(400).json({ error: "category must be one of: general, academic, event, urgent" });
   }
+  const audience = req.body.audience ?? existing.audience;
+  if (!["all", "student", "faculty"].includes(audience)) {
+    return res.status(400).json({ error: "audience must be one of: all, student, faculty" });
+  }
   const title = req.body.title !== undefined ? String(req.body.title).trim() : existing.title;
   const body = req.body.body !== undefined ? String(req.body.body).trim() : existing.body;
   if (!title || !body) return res.status(400).json({ error: "title and body are required" });
   await run(
     db,
     "UPDATE announcements SET title = ?, body = ?, category = ?, audience = ? WHERE id = ?",
-    [title, body, category, req.body.audience ?? existing.audience, req.params.id],
+    [title, body, category, audience, req.params.id],
   );
   const updated = await get(db, "SELECT * FROM announcements WHERE id = ?", [req.params.id]);
   res.json(updated);

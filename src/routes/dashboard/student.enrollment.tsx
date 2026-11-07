@@ -131,7 +131,7 @@ function StudentEnrollment() {
         )}
         <button
           onClick={() => navigate({ to: "/dashboard/student/grades" })}
-          className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+          className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
         >
           Student&apos;s Grade
         </button>
@@ -140,7 +140,7 @@ function StudentEnrollment() {
       <div className="overflow-hidden rounded-lg border bg-card">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1120px] border-collapse text-xs">
-            <thead className="bg-sky-200 text-left text-[13px] font-semibold text-slate-800">
+            <thead className="bg-primary text-left text-[13px] font-semibold text-primary-foreground">
               <tr>
                 <th className="px-4 py-3">Units</th>
                 <th className="px-4 py-3">Subject Code</th>
@@ -165,7 +165,7 @@ function StudentEnrollment() {
               ) : (
                 terms.map((term) => (
                   <Fragment key={term.key}>
-                    <tr className="bg-slate-200 text-slate-700">
+                    <tr className="bg-primary/10 text-primary">
                       <td colSpan={10} className="px-4 py-2 italic">
                         {studentEnrollmentTermLabel(term)}
                       </td>

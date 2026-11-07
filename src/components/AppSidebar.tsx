@@ -45,6 +45,7 @@ interface NavItem {
 const roleNavItems: Record<UserRole, NavItem[]> = {
   student: [
     { title: "Dashboard", url: "/dashboard/student", icon: LayoutDashboard },
+    { title: "My Profile", url: "/dashboard/student/profile", icon: Settings },
     { title: "Enrollment", url: "/dashboard/student/enrollment", icon: ClipboardList },
     { title: "Grades", url: "/dashboard/student/grades", icon: BookOpen },
     { title: "Faculty Evaluation", url: "/dashboard/student/faculty-evaluation", icon: ClipboardCheck },

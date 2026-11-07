@@ -245,6 +245,117 @@ test("isolated backend enforces auth, ownership, idempotency, and record finaliz
   assert.equal(otherFacultyLogin.status, 200);
   const otherFacultyToken = otherFacultyLogin.data.token;
 
+  const profileBefore = await request(
+    "GET",
+    `/api/students/${testStudent.studentId}`,
+    undefined,
+    testStudentToken,
+  );
+  assert.equal(profileBefore.status, 200, JSON.stringify(profileBefore.data));
+  const profileAcademicSnapshot = Object.fromEntries(
+    ["studentId", "program", "yearLevel", "section", "academicYear", "semester", "status"].map(
+      (field) => [field, profileBefore.data[field]],
+    ),
+  );
+
+  assert.equal((await request("PUT", "/api/students/me/profile", {})).status, 401);
+  assert.equal(
+    (await request("PUT", "/api/students/me/profile", {}, adminToken)).status,
+    403,
+  );
+
+  const updatedProfile = await request(
+    "PUT",
+    "/api/students/me/profile",
+    {
+      firstName: profileBefore.data.firstName,
+      middleName: "Profile Test",
+      lastName: profileBefore.data.lastName,
+      email: `profile.${testStudent.studentId}@example.test`,
+      contactNumber: "+639171234567",
+      address: "12 Profile Road",
+      zip: "1000",
+    },
+    testStudentToken,
+  );
+  assert.equal(updatedProfile.status, 200, JSON.stringify(updatedProfile.data));
+  assert.equal(updatedProfile.data.address, "12 Profile Road");
+  assert.equal(updatedProfile.data.contactNumber, "+639171234567");
+  assert.equal(
+    updatedProfile.data.email,
+    `profile.${testStudent.studentId}@example.test`.toLowerCase(),
+  );
+
+  const persistedProfile = await request(
+    "GET",
+    `/api/students/${testStudent.studentId}`,
+    undefined,
+    testStudentToken,
+  );
+  assert.equal(persistedProfile.status, 200);
+  assert.equal(persistedProfile.data.middleName, "Profile Test");
+  assert.equal(persistedProfile.data.zip, "1000");
+  assert.deepEqual(
+    Object.fromEntries(
+      ["studentId", "program", "yearLevel", "section", "academicYear", "semester", "status"].map(
+        (field) => [field, persistedProfile.data[field]],
+      ),
+    ),
+    profileAcademicSnapshot,
+  );
+  const crossStudentProfileAccess = await request(
+    "GET",
+    `/api/students/${otherStudent.studentId}`,
+    undefined,
+    testStudentToken,
+  );
+  assert.equal(crossStudentProfileAccess.status, 403);
+
+  for (const protectedField of [
+    "studentId",
+    "program",
+    "course",
+    "yearLevel",
+    "section",
+    "semester",
+    "academicYear",
+    "enrollmentStatus",
+    "status",
+    "grades",
+  ]) {
+    const deniedProfileUpdate = await request(
+      "PUT",
+      "/api/students/me/profile",
+      { [protectedField]: "attacker-value" },
+      testStudentToken,
+    );
+    assert.equal(deniedProfileUpdate.status, 403, `${protectedField} should be protected`);
+  }
+
+  const invalidProfileUpdate = await request(
+    "PUT",
+    "/api/students/me/profile",
+    { email: "not-an-email" },
+    testStudentToken,
+  );
+  assert.equal(invalidProfileUpdate.status, 400);
+  assert.equal(invalidProfileUpdate.data.details.email, "Enter a valid email address.");
+  for (const [field, value] of [
+    ["email", ""],
+    ["contactNumber", "123"],
+    ["dob", "2023-02-29"],
+    ["zip", "12345"],
+  ]) {
+    const invalidFieldUpdate = await request(
+      "PUT",
+      "/api/students/me/profile",
+      { [field]: value },
+      testStudentToken,
+    );
+    assert.equal(invalidFieldUpdate.status, 400, `${field} should be validated`);
+    assert.ok(invalidFieldUpdate.data.details[field], `${field} should have a field error`);
+  }
+
   const forbiddenUsers = await request("GET", "/api/users", undefined, testStudentToken);
   assert.equal(forbiddenUsers.status, 403);
   const subject = await request("GET", "/api/subjects");
@@ -399,6 +510,66 @@ test("isolated backend enforces auth, ownership, idempotency, and record finaliz
   );
   assert.equal(attendanceUpdate.status, 200);
   assert.equal(attendanceUpdate.data.id, attendance.data.id);
+  const offlineAttendance = {
+    records: [
+      {
+        localId: "offline-attendance-retry-1",
+        studentId: testStudent.studentId,
+        subjectOfferingId: selectedOffering.id,
+        date: "2026-10-04",
+        status: "PRESENT",
+      },
+    ],
+  };
+  const [bulkFirst, bulkRetry, bulkConcurrentRetry] = await Promise.all([
+    request("POST", "/api/attendance/bulk", offlineAttendance, facultyLogin.data.token),
+    request("POST", "/api/attendance/bulk", offlineAttendance, facultyLogin.data.token),
+    request("POST", "/api/attendance/bulk", offlineAttendance, facultyLogin.data.token),
+  ]);
+  for (const response of [bulkFirst, bulkRetry, bulkConcurrentRetry]) {
+    assert.equal(response.status, 200, JSON.stringify(response.data));
+    assert.equal(response.data[0].localId, offlineAttendance.records[0].localId);
+    assert.ok(["created", "updated"].includes(response.data[0].status));
+  }
+  assert.equal(bulkFirst.data[0].id, bulkRetry.data[0].id);
+  assert.equal(bulkFirst.data[0].id, bulkConcurrentRetry.data[0].id);
+  const attendanceDb = openTestDatabase();
+  const duplicateCount = await dbGet(
+    attendanceDb,
+    `SELECT COUNT(*) AS count FROM attendance
+     WHERE studentId = (SELECT id FROM students WHERE studentId = ?)
+       AND subjectOfferingId = ? AND date = ?`,
+    [testStudent.studentId, selectedOffering.id, "2026-10-04"],
+  );
+  await closeDatabase(attendanceDb);
+  assert.equal(duplicateCount.count, 1);
+  const partialBulk = await request(
+    "POST",
+    "/api/attendance/bulk",
+    {
+      records: [
+        {
+          localId: "offline-attendance-partial-1",
+          studentId: testStudent.studentId,
+          subjectOfferingId: selectedOffering.id,
+          date: "2026-10-05",
+          status: "absent",
+        },
+        null,
+      ],
+    },
+    facultyLogin.data.token,
+  );
+  assert.equal(partialBulk.status, 200);
+  assert.equal(partialBulk.data[0].status, "created");
+  assert.equal(partialBulk.data[0].localId, "offline-attendance-partial-1");
+  assert.equal(partialBulk.data[1].status, "failed");
+  const unauthenticatedBulk = await request(
+    "POST",
+    "/api/attendance/bulk",
+    offlineAttendance,
+  );
+  assert.equal(unauthenticatedBulk.status, 401);
   const invalidAttendance = await request(
     "POST",
     "/api/attendance",
@@ -496,6 +667,13 @@ test("isolated backend enforces auth, ownership, idempotency, and record finaliz
   const rateLimitedLogin = await login("phase2-rate-limit@example.test", "wrong-password");
   assert.equal(rateLimitedLogin.status, 429);
   assert.equal((await login(adminEmail)).status, 200);
+
+  const reloginAfterProfileChange = await request("POST", "/api/students/login", {
+    email: `profile.${testStudent.studentId}@example.test`,
+    password: testPassword,
+  });
+  assert.equal(reloginAfterProfileChange.status, 200, JSON.stringify(reloginAfterProfileChange.data));
+  assert.equal(reloginAfterProfileChange.data.address, "12 Profile Road");
 });
 
 test("administrator analytics uses database-backed counts and enforces administrator access", async () => {

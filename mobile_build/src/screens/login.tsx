@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { ActivityIndicator, Button, Text, TextInput } from "react-native-paper";
 import { useRouter } from "expo-router";
 import { fetchFacultyOfferings, fetchOfferingStudents, loginUser } from "../lib/api";
-import { saveAuthData } from "../lib/storage";
+import { getAuthData, saveAuthData } from "../lib/storage";
 import { initDb, upsertFaculty, upsertOfferingStudents, upsertOfferings, upsertStudents } from "../lib/db";
 import { useToastStore } from "../lib/toast-store";
 import { colors } from "../components/MobileShell";
@@ -17,6 +17,21 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const showToast = useToastStore((state) => state.showToast);
+
+  useEffect(() => {
+    let active = true;
+    getAuthData()
+      .then((auth) => {
+        if (active && auth?.user?.role === "faculty") router.replace("/dashboard");
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        showToast(`Unable to restore the saved faculty session: ${message}`, "error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [router, showToast]);
 
   const handleLogin = async () => {
     setError(null); setLoading(true);

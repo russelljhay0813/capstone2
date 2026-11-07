@@ -8,6 +8,7 @@ const webOfferings = new Map<string, Record<string, any>>();
 const webStudents = new Map<string, any>();
 const webOfferingStudents = new Map<string, Set<string>>();
 const webAttendance = new Map<string, AttendanceRecord>();
+const validAttendanceStatuses = new Set(["present", "late", "absent", "excused"]);
 let initialization: Promise<void> | null = null;
 
 // ---------------------------------------------------------------------
@@ -78,10 +79,37 @@ async function initializeDb() {
       semester TEXT NOT NULL,
       status TEXT NOT NULL,
       syncStatus TEXT NOT NULL,
+      serverId TEXT,
+      retryCount INTEGER NOT NULL DEFAULT 0,
+      nextRetryAt INTEGER,
+      lastAttemptAt INTEGER,
+      lastSyncAt INTEGER,
+      lastError TEXT,
+      retryable INTEGER NOT NULL DEFAULT 1,
       updatedAt INTEGER NOT NULL,
       UNIQUE(studentId, offeringId, date)
     );
   `);
+
+  const attendanceColumns = (await db.getAllAsync(`PRAGMA table_info(attendance)`)) as Array<{ name: string }>;
+  const attendanceColumnNames = new Set(attendanceColumns.map((column) => column.name));
+  const attendanceMigrations: Array<[string, string]> = [
+    ["serverId", "TEXT"],
+    ["retryCount", "INTEGER NOT NULL DEFAULT 0"],
+    ["nextRetryAt", "INTEGER"],
+    ["lastAttemptAt", "INTEGER"],
+    ["lastSyncAt", "INTEGER"],
+    ["lastError", "TEXT"],
+    ["retryable", "INTEGER NOT NULL DEFAULT 1"],
+  ];
+  for (const [name, definition] of attendanceMigrations) {
+    if (!attendanceColumnNames.has(name)) {
+      await db.execAsync(`ALTER TABLE attendance ADD COLUMN ${name} ${definition}`);
+    }
+  }
+  await db.runAsync(
+    `UPDATE attendance SET syncStatus = 'pending' WHERE syncStatus = 'syncing'`,
+  );
 
   const offeringColumns = (await db.getAllAsync(`PRAGMA table_info(offerings)`)) as Array<{ name: string }>;
   if (!offeringColumns.some((column) => column.name === "enrolledStudentCount")) {
@@ -97,7 +125,7 @@ export function initDb(): Promise<void> {
 // ---------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------
-export type AttendanceSyncStatus = "pending" | "synced" | "failed";
+export type AttendanceSyncStatus = "pending" | "syncing" | "synced" | "failed";
 
 export interface AttendanceRecord {
   id: string;
@@ -113,12 +141,28 @@ export interface AttendanceRecord {
   semester: string;
   status: string;
   syncStatus: AttendanceSyncStatus;
+  serverId?: string | null;
+  retryCount?: number;
+  nextRetryAt?: number | null;
+  lastAttemptAt?: number | null;
+  lastSyncAt?: number | null;
+  lastError?: string | null;
+  retryable?: boolean | number;
   updatedAt: number;
 }
 
 export interface AttendanceSaveResult extends AttendanceRecord {
   isUpdated: boolean;
   previousStatus: string | null;
+}
+
+export interface AttendanceSyncSummary {
+  pendingCount: number;
+  syncingCount: number;
+  syncedCount: number;
+  failedCount: number;
+  retryableFailedCount: number;
+  lastSyncAt: number | null;
 }
 
 // ---------------------------------------------------------------------
@@ -247,6 +291,23 @@ export async function getAttendanceRecord(
 export async function saveAttendanceRecord(
   record: AttendanceRecord,
 ): Promise<AttendanceSaveResult> {
+  const parsedDate = new Date(`${record.date}T00:00:00Z`);
+  if (!record.id || !record.studentId || !record.offeringId || !record.facultyId) {
+    throw new Error("Attendance requires a local ID, student, offering, and faculty owner.");
+  }
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(record.date) ||
+    Number.isNaN(parsedDate.getTime()) ||
+    parsedDate.toISOString().slice(0, 10) !== record.date
+  ) {
+    throw new Error("Attendance date must be a valid YYYY-MM-DD date.");
+  }
+  if (!validAttendanceStatuses.has(record.status)) {
+    throw new Error("Attendance status must be present, late, absent, or excused.");
+  }
+  if (!Number.isFinite(record.updatedAt)) {
+    throw new Error("Attendance requires a valid creation timestamp.");
+  }
   if (isWeb) {
     const existing = await getAttendanceRecord(record.studentId, record.offeringId, record.date);
     const id = existing?.id ?? record.id;
@@ -254,7 +315,14 @@ export async function saveAttendanceRecord(
       existing && existing.status === record.status && existing.syncStatus === "synced"
         ? "synced"
         : "pending";
-    const saved: AttendanceRecord = { ...record, id, syncStatus: syncStatus as AttendanceSyncStatus };
+    const saved: AttendanceRecord = {
+      ...record,
+      id,
+      serverId: existing?.serverId ?? record.serverId ?? null,
+      lastSyncAt: existing?.lastSyncAt ?? record.lastSyncAt ?? null,
+      retryCount: syncStatus === "synced" ? existing?.retryCount ?? 0 : 0,
+      syncStatus,
+    };
     webAttendance.set(`${record.studentId}:${record.offeringId}:${record.date}`, saved);
     return {
       ...saved,
@@ -272,7 +340,7 @@ export async function saveAttendanceRecord(
       : "pending";
 
   await db.runAsync(
-    `INSERT OR REPLACE INTO attendance (id, studentId, studentName, offeringId, subjectCode, subjectName, facultyId, date, time, academicYear, semester, status, syncStatus, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO attendance (id, studentId, studentName, offeringId, subjectCode, subjectName, facultyId, date, time, academicYear, semester, status, syncStatus, serverId, retryCount, nextRetryAt, lastAttemptAt, lastSyncAt, lastError, retryable, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       record.studentId,
@@ -287,11 +355,25 @@ export async function saveAttendanceRecord(
       record.semester,
       record.status,
       syncStatus,
+      existing?.serverId ?? record.serverId ?? null,
+      syncStatus === "synced" ? existing?.retryCount ?? 0 : 0,
+      null,
+      null,
+      syncStatus === "synced" ? existing?.lastSyncAt ?? null : null,
+      null,
+      1,
       record.updatedAt,
     ],
   );
 
-  return { ...record, id, syncStatus, isUpdated: !!existing, previousStatus };
+  return {
+    ...record,
+    id,
+    serverId: existing?.serverId ?? record.serverId ?? null,
+    syncStatus,
+    isUpdated: !!existing,
+    previousStatus,
+  };
 }
 
 export async function getOfferingRoster(offeringId: string, date: string): Promise<any[]> {
@@ -373,20 +455,199 @@ export async function getTotalStudentsForFaculty(facultyId: string): Promise<num
 }
 
 export async function getPendingAttendance(): Promise<any[]> {
-  if (isWeb) return [...webAttendance.values()].filter((record) => record.syncStatus === "pending" || record.syncStatus === "failed");
+  if (isWeb) {
+    const now = Date.now();
+    return [...webAttendance.values()].filter(
+      (record) =>
+        record.syncStatus === "pending" ||
+        (record.syncStatus === "failed" &&
+          record.retryable !== false &&
+          record.retryable !== 0 &&
+          (record.nextRetryAt == null || record.nextRetryAt <= now)),
+    );
+  }
   await initDb();
   return await db.getAllAsync(
-    `SELECT * FROM attendance WHERE syncStatus = 'pending' OR syncStatus = 'failed' ORDER BY updatedAt ASC`,
+    `SELECT * FROM attendance
+     WHERE syncStatus = 'pending'
+        OR (syncStatus = 'failed' AND retryable = 1 AND (nextRetryAt IS NULL OR nextRetryAt <= ?))
+     ORDER BY updatedAt ASC`,
+    [Date.now()],
   );
 }
 
-export async function updateAttendanceSyncStatus(id: string, syncStatus: AttendanceSyncStatus) {
+export async function getNextAttendanceRetryAt(): Promise<number | null> {
+  if (isWeb) {
+    const retryTimes = [...webAttendance.values()]
+      .filter(
+        (record) =>
+          record.syncStatus === "failed" &&
+          record.retryable !== false &&
+          record.retryable !== 0 &&
+          record.nextRetryAt != null,
+      )
+      .map((record) => Number(record.nextRetryAt));
+    return retryTimes.length ? Math.min(...retryTimes) : null;
+  }
+  await initDb();
+  const row = (await db.getFirstAsync(
+    `SELECT MIN(nextRetryAt) AS nextRetryAt FROM attendance
+     WHERE syncStatus = 'failed' AND retryable = 1 AND nextRetryAt IS NOT NULL`,
+  )) as { nextRetryAt: number | null } | null;
+  return row?.nextRetryAt ?? null;
+}
+
+export async function getAttendanceSyncSummary(): Promise<AttendanceSyncSummary> {
+  if (isWeb) {
+    const records = [...webAttendance.values()];
+    return {
+      pendingCount: records.filter((record) => record.syncStatus === "pending").length,
+      syncingCount: records.filter((record) => record.syncStatus === "syncing").length,
+      syncedCount: records.filter((record) => record.syncStatus === "synced").length,
+      failedCount: records.filter((record) => record.syncStatus === "failed").length,
+      retryableFailedCount: records.filter(
+        (record) =>
+          record.syncStatus === "failed" &&
+          record.retryable !== false &&
+          record.retryable !== 0,
+      ).length,
+      lastSyncAt: records.reduce<number | null>((latest, record) => {
+        if (record.lastSyncAt == null) return latest;
+        return latest == null ? record.lastSyncAt : Math.max(latest, record.lastSyncAt);
+      }, null),
+    };
+  }
+  await initDb();
+  const row = (await db.getFirstAsync(
+    `SELECT
+       SUM(CASE WHEN syncStatus = 'pending' THEN 1 ELSE 0 END) AS pendingCount,
+       SUM(CASE WHEN syncStatus = 'syncing' THEN 1 ELSE 0 END) AS syncingCount,
+       SUM(CASE WHEN syncStatus = 'synced' THEN 1 ELSE 0 END) AS syncedCount,
+       SUM(CASE WHEN syncStatus = 'failed' THEN 1 ELSE 0 END) AS failedCount,
+       SUM(CASE WHEN syncStatus = 'failed' AND retryable = 1 THEN 1 ELSE 0 END) AS retryableFailedCount,
+       MAX(lastSyncAt) AS lastSyncAt
+     FROM attendance`,
+  )) as Omit<AttendanceSyncSummary, "lastSyncAt"> & { lastSyncAt: number | null };
+  return {
+    pendingCount: row.pendingCount ?? 0,
+    syncingCount: row.syncingCount ?? 0,
+    syncedCount: row.syncedCount ?? 0,
+    failedCount: row.failedCount ?? 0,
+    retryableFailedCount: row.retryableFailedCount ?? 0,
+    lastSyncAt: row.lastSyncAt ?? null,
+  };
+}
+
+export async function markAttendanceSyncing(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  const now = Date.now();
   if (isWeb) {
     for (const [key, record] of webAttendance) {
-      if (record.id === id) webAttendance.set(key, { ...record, syncStatus });
+      if (ids.includes(record.id)) {
+        webAttendance.set(key, { ...record, syncStatus: "syncing", lastAttemptAt: now });
+      }
     }
     return;
   }
   await initDb();
-  await db.runAsync(`UPDATE attendance SET syncStatus = ? WHERE id = ?`, [syncStatus, id]);
+  await db.withTransactionAsync(async () => {
+    for (const id of ids) {
+      await db.runAsync(
+        `UPDATE attendance SET syncStatus = 'syncing', lastAttemptAt = ? WHERE id = ?`,
+        [now, id],
+      );
+    }
+  });
+}
+
+export async function markAttendanceSynced(id: string, serverId: string): Promise<void> {
+  const now = Date.now();
+  if (isWeb) {
+    for (const [key, record] of webAttendance) {
+      if (record.id === id) {
+        webAttendance.set(key, {
+          ...record,
+          serverId,
+          syncStatus: "synced",
+          lastSyncAt: now,
+          lastError: null,
+          retryCount: 0,
+          nextRetryAt: null,
+          retryable: true,
+        });
+      }
+    }
+    return;
+  }
+  await initDb();
+  await db.runAsync(
+    `UPDATE attendance
+     SET serverId = ?, syncStatus = 'synced', lastSyncAt = ?, lastError = NULL,
+         retryCount = 0, nextRetryAt = NULL, retryable = 1
+     WHERE id = ?`,
+    [serverId, now, id],
+  );
+}
+
+const MAX_SYNC_ATTEMPTS = 8;
+const INITIAL_RETRY_DELAY = 30_000;
+const MAX_RETRY_DELAY = 60 * 60 * 1000;
+
+export async function markAttendanceFailed(
+  id: string,
+  error: string,
+  retryable: boolean,
+): Promise<void> {
+  if (isWeb) {
+    for (const [key, record] of webAttendance) {
+      if (record.id !== id || record.syncStatus === "synced") continue;
+      const retryCount = (record.retryCount ?? 0) + 1;
+      const canRetry = retryable && retryCount < MAX_SYNC_ATTEMPTS;
+      const delay = Math.min(MAX_RETRY_DELAY, INITIAL_RETRY_DELAY * 2 ** (retryCount - 1));
+      webAttendance.set(key, {
+        ...record,
+        syncStatus: "failed",
+        retryCount,
+        nextRetryAt: canRetry ? Date.now() + delay : null,
+        lastError: error,
+        retryable: canRetry,
+      });
+    }
+    return;
+  }
+  await initDb();
+  const row = (await db.getFirstAsync(
+    `SELECT retryCount FROM attendance WHERE id = ?`,
+    [id],
+  )) as { retryCount: number } | null;
+  if (!row) return;
+  const retryCount = row.retryCount + 1;
+  const canRetry = retryable && retryCount < MAX_SYNC_ATTEMPTS;
+  const delay = Math.min(MAX_RETRY_DELAY, INITIAL_RETRY_DELAY * 2 ** (retryCount - 1));
+  await db.runAsync(
+    `UPDATE attendance
+     SET syncStatus = 'failed', retryCount = ?, nextRetryAt = ?, lastError = ?, retryable = ?
+     WHERE id = ? AND syncStatus != 'synced'`,
+    [retryCount, canRetry ? Date.now() + delay : null, error, canRetry ? 1 : 0, id],
+  );
+}
+
+export async function retryFailedAttendance(): Promise<void> {
+  if (isWeb) {
+    for (const [key, record] of webAttendance) {
+      if (
+        record.syncStatus === "failed" &&
+        record.retryable !== false &&
+        record.retryable !== 0
+      ) {
+        webAttendance.set(key, { ...record, syncStatus: "pending", nextRetryAt: null });
+      }
+    }
+    return;
+  }
+  await initDb();
+  await db.runAsync(
+    `UPDATE attendance SET syncStatus = 'pending', nextRetryAt = NULL
+     WHERE syncStatus = 'failed' AND retryable = 1`,
+  );
 }

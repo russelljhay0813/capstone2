@@ -15,11 +15,23 @@ export default function Layout() {
   const { visible, message, hideToast } = useToastStore();
 
   useEffect(() => {
-    // Initialize local SQLite database and start sync process
+    let active = true;
+    let stopSync: (() => void) | undefined;
     initDb()
-      .then(() => sync.init())
-      .catch(console.error);
-  }, []);
+      .then(() => {
+        const cleanup = sync.init();
+        if (active) stopSync = cleanup;
+        else cleanup();
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        useToastStore.getState().showToast(`Unable to initialize local attendance storage: ${message}`, "error");
+      });
+    return () => {
+      active = false;
+      stopSync?.();
+    };
+  }, [sync.init]);
 
   return (
     <SafeAreaProvider>
