@@ -12,7 +12,7 @@ import { validateRegistrationPayload } from "../registration/workflow.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const backendDir = path.resolve(here, "..");
-const sourceDatabase = path.join(backendDir, "piat.db");
+const sourceDatabase = path.resolve(backendDir, "..", "database", "piat.db");
 const jwtSecret = "phase2_test_jwt_secret_value_only_for_isolated_tests";
 const testPassword = "Phase2-Test-Password-123!";
 let tempDir;

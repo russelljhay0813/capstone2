@@ -1,6 +1,6 @@
 # PIAT School Management System — System Context
 
-This context view distinguishes the browser-based system (web UI and Express API) from the separate Expo faculty attendance application. `backend/piat.db` is the central application database. The mobile app also has an offline local store; that local schema is separate and is not part of the central ERD.
+This context view distinguishes the browser-based system (web UI and Express API) from the separate Expo faculty attendance application. `database/piat.db` is the central application database. The mobile app also has an offline local store; that local schema is separate and is not part of the central ERD.
 
 ```mermaid
 flowchart LR
@@ -11,7 +11,7 @@ flowchart LR
   Web[PIAT Web System<br/>Browser UI + Express API]
   Mobile[Faculty Mobile Attendance Application<br/>Expo]
   Local[(Mobile local storage<br/>SQLite on native; in-memory on web)]
-  DB[(Central SQLite Database<br/>backend/piat.db)]
+  DB[(Central SQLite Database<br/>database/piat.db)]
 
   Admin -->|Credentials; users, academic setup, reports, announcements| Web
   Web -->|Authentication result, dashboards, user and setup data| Admin
@@ -35,7 +35,7 @@ flowchart LR
 
 ## Verified interaction boundaries
 
-- Browser API calls use the web API client in `src/lib/api.ts`; the backend opens `backend/piat.db` unless `PIAT_DB_PATH` overrides it.
+- Browser API calls use the web API client in `frontend/src/lib/api.ts`; the backend opens `database/piat.db` unless `PIAT_DB_PATH` overrides it. An existing `backend/piat.db` remains the compatibility default when present.
 - Mobile login calls `/api/users/login`, accepts only a `faculty` role in the mobile UI, then requests faculty offerings and each offering's student list. A backend connection is required for login and initial roster loading; offline login was not found.
 - Mobile attendance can be queued in local SQLite while offline and bulk-posted to `/api/attendance/bulk` when network state reports connectivity.
 - The mobile web build substitutes in-memory `Map` stores for local SQLite; persistence across reloads in that build is not implemented by the inspected storage module.

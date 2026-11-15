@@ -7,6 +7,7 @@ const backendTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:400
 
 export default defineConfig({
   vite: {
+    root: path.resolve(__dirname, "frontend"),
     server: {
       host: "0.0.0.0",
       port: 8080,
@@ -22,6 +23,9 @@ export default defineConfig({
       include: ["use-sync-external-store/shim/with-selector"],
     },
     resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "frontend", "src"),
+      },
       tsconfigPaths: true,
     },
   },

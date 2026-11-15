@@ -1,10 +1,16 @@
 import sqlite3 from "sqlite3";
 import crypto from "crypto";
+import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { FACULTY_EVALUATION_QUESTIONNAIRE } from "./faculty-evaluation-questionnaire.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.PIAT_DB_PATH || path.join(__dirname, "piat.db");
+const databasePath = path.resolve(__dirname, "..", "database", "piat.db");
+const legacyDatabasePath = path.join(__dirname, "piat.db");
+const DB_PATH =
+  process.env.PIAT_DB_PATH ||
+  (existsSync(legacyDatabasePath) ? legacyDatabasePath : databasePath);
 
 function hashSeedPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -112,6 +118,170 @@ async function createFkIndexes(db) {
   ];
   for (const sql of indexes) {
     await run(db, sql);
+  }
+}
+
+async function ensureFacultyEvaluationSchema(db) {
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS faculty_evaluations (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      academicYearId TEXT NOT NULL,
+      semesterId TEXT NOT NULL,
+      startDate TEXT NOT NULL,
+      endDate TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'active', 'closed')),
+      createdBy TEXT NOT NULL,
+      createdAt INTEGER NOT NULL,
+      FOREIGN KEY (academicYearId) REFERENCES academicYears(id) ON DELETE RESTRICT,
+      FOREIGN KEY (semesterId) REFERENCES semesters(id) ON DELETE RESTRICT,
+      FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE RESTRICT
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_criteria (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      displayOrder INTEGER NOT NULL DEFAULT 0,
+      isActive INTEGER NOT NULL DEFAULT 1 CHECK(isActive IN (0, 1))
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_questions (
+      id TEXT PRIMARY KEY,
+      criteriaId TEXT NOT NULL,
+      questionText TEXT NOT NULL,
+      isRequired INTEGER NOT NULL DEFAULT 1 CHECK(isRequired IN (0, 1)),
+      displayOrder INTEGER NOT NULL DEFAULT 0,
+      isActive INTEGER NOT NULL DEFAULT 1 CHECK(isActive IN (0, 1)),
+      FOREIGN KEY (criteriaId) REFERENCES evaluation_criteria(id) ON DELETE RESTRICT,
+      UNIQUE(criteriaId, questionText)
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_period_questions (
+      evaluationId TEXT NOT NULL,
+      questionId TEXT NOT NULL,
+      criteriaId TEXT NOT NULL,
+      categoryName TEXT NOT NULL,
+      categoryOrder INTEGER NOT NULL,
+      questionText TEXT NOT NULL,
+      questionOrder INTEGER NOT NULL,
+      isRequired INTEGER NOT NULL CHECK(isRequired IN (0, 1)),
+      PRIMARY KEY(evaluationId, questionId),
+      FOREIGN KEY (evaluationId) REFERENCES faculty_evaluations(id) ON DELETE CASCADE,
+      FOREIGN KEY (questionId) REFERENCES evaluation_questions(id) ON DELETE RESTRICT,
+      FOREIGN KEY (criteriaId) REFERENCES evaluation_criteria(id) ON DELETE RESTRICT
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_participation (
+      id TEXT PRIMARY KEY,
+      evaluationId TEXT NOT NULL,
+      studentId TEXT NOT NULL,
+      subjectOfferingId TEXT NOT NULL,
+      completedAt INTEGER NOT NULL,
+      FOREIGN KEY (evaluationId) REFERENCES faculty_evaluations(id) ON DELETE CASCADE,
+      FOREIGN KEY (studentId) REFERENCES students(id) ON DELETE CASCADE,
+      FOREIGN KEY (subjectOfferingId) REFERENCES subjectOfferings(id) ON DELETE RESTRICT,
+      UNIQUE(evaluationId, studentId, subjectOfferingId)
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_responses (
+      id TEXT PRIMARY KEY,
+      evaluationId TEXT NOT NULL,
+      facultyId TEXT NOT NULL,
+      subjectOfferingId TEXT NOT NULL,
+      feedback TEXT,
+      facultyStrengths TEXT,
+      areasForImprovement TEXT,
+      additionalComments TEXT,
+      FOREIGN KEY (evaluationId) REFERENCES faculty_evaluations(id) ON DELETE CASCADE,
+      FOREIGN KEY (facultyId) REFERENCES faculty(id) ON DELETE RESTRICT,
+      FOREIGN KEY (subjectOfferingId) REFERENCES subjectOfferings(id) ON DELETE RESTRICT
+    )`,
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_answers (
+      id TEXT PRIMARY KEY,
+      responseId TEXT NOT NULL,
+      questionId TEXT NOT NULL,
+      rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+      comment TEXT,
+      FOREIGN KEY (responseId) REFERENCES evaluation_responses(id) ON DELETE CASCADE,
+      FOREIGN KEY (questionId) REFERENCES evaluation_questions(id) ON DELETE RESTRICT,
+      UNIQUE(responseId, questionId)
+    )`,
+  );
+  await addColumnIfMissing(db, "evaluation_responses", "facultyStrengths", "TEXT");
+  await addColumnIfMissing(db, "evaluation_responses", "areasForImprovement", "TEXT");
+  await addColumnIfMissing(db, "evaluation_responses", "additionalComments", "TEXT");
+
+  const duplicatePeriod = await get(
+    db,
+    `SELECT academicYearId, semesterId
+     FROM faculty_evaluations
+     GROUP BY academicYearId, semesterId
+     HAVING COUNT(*) > 1
+     LIMIT 1`,
+  );
+  if (duplicatePeriod) {
+    throw new Error(
+      "Cannot enforce unique faculty evaluation periods: duplicate academic year and semester records already exist.",
+    );
+  }
+  await run(
+    db,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_faculty_evaluations_year_semester
+     ON faculty_evaluations(academicYearId, semesterId)`,
+  );
+  await run(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_evaluation_participation_student ON evaluation_participation(studentId, evaluationId)",
+  );
+  await run(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_evaluation_responses_offering ON evaluation_responses(evaluationId, subjectOfferingId, facultyId)",
+  );
+  await run(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_evaluation_answers_response ON evaluation_answers(responseId)",
+  );
+
+  for (const [categoryOrder, category] of FACULTY_EVALUATION_QUESTIONNAIRE.entries()) {
+    await run(
+      db,
+      `INSERT OR IGNORE INTO evaluation_criteria
+       (id, name, description, displayOrder, isActive)
+       VALUES (?, ?, ?, ?, 1)`,
+      [`faculty-evaluation-category-${categoryOrder + 1}`, category.name, category.description, categoryOrder + 1],
+    );
+    const savedCategory = await get(db, "SELECT id FROM evaluation_criteria WHERE name = ?", [
+      category.name,
+    ]);
+    for (const [questionOrder, questionText] of category.questions.entries()) {
+      await run(
+        db,
+        `INSERT OR IGNORE INTO evaluation_questions
+         (id, criteriaId, questionText, isRequired, displayOrder, isActive)
+         VALUES (?, ?, ?, 1, ?, 1)`,
+        [
+          `faculty-evaluation-question-${categoryOrder + 1}-${questionOrder + 1}`,
+          savedCategory.id,
+          questionText,
+          questionOrder + 1,
+        ],
+      );
+    }
   }
 }
 
@@ -483,6 +653,8 @@ export async function initDb(db) {
       updatedAt INTEGER NOT NULL
     )`,
   );
+
+  await ensureFacultyEvaluationSchema(db);
 
   // ------------------------------------------------------------------
   // 2. CREATE INDEXES

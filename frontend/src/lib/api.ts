@@ -1055,81 +1055,105 @@ export async function fetchReportCurriculum(): Promise<any[]> {
 }
 
 // ---------- FACULTY EVALUATIONS ----------
-export interface GoogleEvaluationPeriod {
-  academicYear: string;
-  semester: string;
+export interface FacultyEvaluationPeriod {
+  id: string;
+  title: string;
+  academicYearId: string;
+  semesterId: string;
   startDate: string;
   endDate: string;
-  status: "active" | "upcoming" | "closed";
+  status: "draft" | "active" | "closed";
+  academicYear?: string;
+  semester?: string;
 }
 
-export interface GoogleEvaluationAssignment {
+export interface EvaluationCriterion {
+  id: string;
+  name: string;
+  description?: string | null;
+  displayOrder: number;
+  isActive: number;
+}
+
+export interface EvaluationQuestion {
+  id: string;
+  criteriaId: string;
+  category?: string;
+  questionText: string;
+  isRequired: number;
+  displayOrder: number;
+  isActive: number;
+}
+
+export interface EvaluationPeriodQuestion {
+  questionId: string;
+  criteriaId: string;
+  category: string;
+  categoryOrder: number;
+  questionText: string;
+  isRequired: number;
+  displayOrder: number;
+}
+
+export interface EligibleFacultyEvaluation {
+  evaluationId: string;
+  evaluationTitle: string;
+  startDate: string;
+  endDate: string;
+  periodStatus: "draft" | "active" | "closed";
+  canSubmit: boolean;
   academicYear: string;
   semester: string;
+  subjectOfferingId: string;
+  subjectCode: string;
+  subjectTitle: string;
+  facultyId: string;
   facultyName: string;
+  programName?: string | null;
+  completed: number;
+}
+
+export interface FacultyEvaluationReportGroup {
+  evaluationId: string;
+  evaluationTitle: string;
+  academicYear: string;
+  semester: string;
+  facultyId: string;
+  facultyName: string;
+  subjectOfferingId: string;
   subjectCode: string;
   subjectTitle: string;
   programName?: string | null;
-}
-
-export interface GoogleEvaluationGroup {
-  facultyName: string;
-  subject: string;
-  academicYear: string;
-  semester: string;
-  programName: string;
   responseCount: number;
   overallAverage: number;
   interpretation: string;
   categories: Array<{
+    criteriaId: string;
     category: string;
     average: number;
     interpretation: string;
   }>;
-  questionAverages: Array<{ question: string; average: number }>;
+  questions: Array<{
+    questionId: string;
+    questionText: string;
+    average: number;
+    interpretation: string;
+  }>;
 }
 
-export interface GoogleEvaluationReport {
-  groups: GoogleEvaluationGroup[];
-  totalResponses: number;
-  filters: {
-    academicYears: string[];
-    semesters: string[];
-    programs: string[];
-    faculty: string[];
-    subjects: string[];
-  };
-  formUrl?: string | null;
-  spreadsheetUrl?: string | null;
+export interface FacultyEvaluationReport {
+  periods: FacultyEvaluationPeriod[];
+  completion: Array<{
+    evaluationId: string;
+    eligibleCount: number | null;
+    completedCount: number | null;
+    percentage: number | null;
+    suppressed: boolean;
+  }>;
+  groups: FacultyEvaluationReportGroup[];
 }
 
-export interface GoogleEvaluationWorkspaceStatus {
-  formConfigured: boolean;
-  sheetsConfigured: boolean;
-  periodConfigured: boolean;
-  formUrl: string | null;
-  spreadsheetUrl: string | null;
-  period: GoogleEvaluationPeriod | null;
-  totalResponses: number | null;
-  completionTrackingAvailable: false;
-}
-
-export interface GoogleEvaluationStudentAssignments {
-  period: GoogleEvaluationPeriod | null;
-  formUrl: string | null;
-  assignments: GoogleEvaluationAssignment[];
-  completionTrackingAvailable: false;
-}
-
-export async function fetchGoogleEvaluationWorkspaceStatus(): Promise<GoogleEvaluationWorkspaceStatus> {
-  return request<GoogleEvaluationWorkspaceStatus>("/api/evaluations/status");
-}
-
-export async function fetchGoogleEvaluationStudentAssignments(): Promise<GoogleEvaluationStudentAssignments> {
-  return request<GoogleEvaluationStudentAssignments>("/api/evaluations/student-assignments");
-}
-
-function googleEvaluationQuery(filters: Record<string, string | undefined>): string {
+function evaluationQuery(filters: Record<string, string | undefined>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value) params.set(key, value);
@@ -1138,18 +1162,103 @@ function googleEvaluationQuery(filters: Record<string, string | undefined>): str
   return query ? `?${query}` : "";
 }
 
-export async function fetchGoogleEvaluationReport(
-  filters: Record<string, string | undefined> = {},
-): Promise<GoogleEvaluationReport> {
-  return request<GoogleEvaluationReport>(
-    `/api/evaluations/reports${googleEvaluationQuery(filters)}`,
+export async function fetchFacultyEvaluationPeriods(): Promise<FacultyEvaluationPeriod[]> {
+  return request<FacultyEvaluationPeriod[]>("/api/evaluations/periods");
+}
+
+export async function createFacultyEvaluationPeriod(input: {
+  title: string;
+  academicYearId: string;
+  semesterId: string;
+  startDate: string;
+  endDate: string;
+}): Promise<FacultyEvaluationPeriod> {
+  return request<FacultyEvaluationPeriod>("/api/evaluations/periods", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateFacultyEvaluationPeriod(
+  id: string,
+  patch: Partial<FacultyEvaluationPeriod>,
+): Promise<FacultyEvaluationPeriod> {
+  return request<FacultyEvaluationPeriod>(`/api/evaluations/periods/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function fetchEvaluationCriteria(): Promise<EvaluationCriterion[]> {
+  return request<EvaluationCriterion[]>("/api/evaluations/criteria");
+}
+
+export async function saveEvaluationCriterion(
+  input: Partial<EvaluationCriterion> & { name: string },
+  id?: string,
+): Promise<EvaluationCriterion> {
+  return request<EvaluationCriterion>(
+    id ? `/api/evaluations/criteria/${encodeURIComponent(id)}` : "/api/evaluations/criteria",
+    {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(input),
+    },
   );
 }
 
-export async function fetchMyGoogleEvaluationResults(): Promise<{
-  groups: GoogleEvaluationGroup[];
-}> {
-  return request<{ groups: GoogleEvaluationGroup[] }>("/api/evaluations/my-results");
+export async function fetchEvaluationQuestions(): Promise<EvaluationQuestion[]> {
+  return request<EvaluationQuestion[]>("/api/evaluations/questions");
+}
+
+export async function saveEvaluationQuestion(
+  input: Partial<Omit<EvaluationQuestion, "isRequired">> & {
+    criteriaId: string;
+    questionText: string;
+    isRequired?: boolean | number;
+  },
+  id?: string,
+): Promise<EvaluationQuestion> {
+  return request<EvaluationQuestion>(
+    id ? `/api/evaluations/questions/${encodeURIComponent(id)}` : "/api/evaluations/questions",
+    {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function fetchEvaluationQuestionsForPeriod(
+  periodId: string,
+): Promise<EvaluationPeriodQuestion[]> {
+  return request<EvaluationPeriodQuestion[]>(`/api/evaluations/periods/${encodeURIComponent(periodId)}/questions`);
+}
+
+export async function fetchEligibleFacultyEvaluations(): Promise<EligibleFacultyEvaluation[]> {
+  return request<EligibleFacultyEvaluation[]>("/api/evaluations/eligible");
+}
+
+export async function submitFacultyEvaluation(input: {
+  evaluationId: string;
+  subjectOfferingId: string;
+  answers: Array<{ questionId: string; rating: number }>;
+  facultyStrengths?: string;
+  areasForImprovement?: string;
+  additionalComments?: string;
+}): Promise<{ success: true; completed: true }> {
+  return request("/api/evaluations/submit", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchFacultyEvaluationReport(
+  filters: Record<string, string | undefined> = {},
+): Promise<FacultyEvaluationReport> {
+  return request<FacultyEvaluationReport>(`/api/evaluations/reports${evaluationQuery(filters)}`);
+}
+
+export async function fetchMyFacultyEvaluationResults(): Promise<FacultyEvaluationReport> {
+  return request<FacultyEvaluationReport>("/api/evaluations/my-results");
 }
 
 // ---------- SETTINGS ----------

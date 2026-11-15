@@ -16,6 +16,7 @@ node_modules
 *.db
 *.sqlite
 *.sqlite3
+!database/*.db
 dist
 dist-ssr
 test-results/

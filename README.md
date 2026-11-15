@@ -10,10 +10,15 @@ This repository contains the PIAT Academic Management System, a multi-platform a
 
 ## Repository structure
 
-- `backend/` — REST API, SQLite database, seeding scripts, and backend documentation
-- `mobile_build/` — Expo mobile client and mobile README
-- `src/` — web application source files and route definitions
-- `package.json` — root project dependencies and any root-level scripts
+- `frontend/` — web application source, public assets, HTML entry, and TypeScript configuration
+- `backend/` — REST API, backend modules, scripts, and tests
+- `database/` — tracked SQLite databases and database backups used by the backend
+- `mobile_build/` — Expo mobile attendance application
+- `docs/` — architecture, schema, and system documentation
+- `docs/reports/` — functional, security, and codebase review reports
+- Root-level Vite, ESLint, Playwright, and Wrangler files — shared project/tooling configuration
+
+The preserved review reports are in [`docs/reports/`](./docs/reports/).
 
 ## Quick start
 
@@ -48,8 +53,8 @@ This repository contains the PIAT Academic Management System, a multi-platform a
 
 ## Backend and data seeding
 
-- The backend uses SQLite and stores data in `backend/piat.db`.
-- Faculty evaluations use Google Forms for student submissions and Google Sheets for response storage and calculations. See [the Google Workspace setup guide](./docs/GOOGLE_WORKSPACE_FACULTY_EVALUATIONS.md) before configuring the evaluation period or exposing the dashboard links.
+- The backend uses SQLite and defaults to `database/piat.db`. Set `PIAT_DB_PATH` to override the path. For compatibility, an existing `backend/piat.db` is preferred when present.
+- Faculty evaluations are a native PIAT feature backed by SQLite. See [the faculty evaluation guide](./docs/FACULTY_EVALUATIONS.md) for administration, API, privacy, and testing details.
 - The relational system-test dataset can be seeded using:
   ```bash
    npm run seed:test

@@ -2,7 +2,7 @@
 
 ## Scope and verification
 
-This inventory was checked against the live SQLite database at `backend/piat.db` in read-only mode and cross-checked against the schema initialization in `backend/db.js`. It describes schema only; no row data is included.
+This inventory was checked against the live SQLite database at `database/piat.db` in read-only mode and cross-checked against the schema initialization in `backend/db.js`. It describes schema only; no row data is included.
 
 All 16 requested tables exist. The live database has 18 application tables in total; `activityLogs` and `settings` are additional tables outside this requested inventory. Three requested names use camelCase identifiers in SQLite rather than the supplied snake_case spelling: `academic_years` is `academicYears`, `academic_records` is `academicRecords`, and `subject_offerings` is `subjectOfferings`. Use the actual identifier when querying the database.
 

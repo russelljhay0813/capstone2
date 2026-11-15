@@ -56,7 +56,7 @@
 | Attendance date could not be selected | Screen always used the current UTC date | Added validated `YYYY-MM-DD` input with local-date default |
 | Roster/storage errors could be hidden | Async failures were not surfaced at the attendance screen | Added explicit local-save, roster-load, and synchronization error messages |
 
-Files changed for this task: [mobile SQLite store](./mobile_build/src/lib/db.ts), [sync store](./mobile_build/src/lib/sync-store.ts), [mobile API](./mobile_build/src/lib/api.ts), [attendance screen](./mobile_build/src/screens/attendance.tsx), [dashboard](./mobile_build/src/screens/dashboard.tsx), [history](./mobile_build/app/history.tsx), [login screen](./mobile_build/src/screens/login.tsx), [app layout](./mobile_build/app/_layout.tsx), [backend attendance routes](./backend/index.js), and [backend integration tests](./backend/tests/phase2.test.mjs).
+Files changed for this task: [mobile SQLite store](../../mobile_build/src/lib/db.ts), [sync store](../../mobile_build/src/lib/sync-store.ts), [mobile API](../../mobile_build/src/lib/api.ts), [attendance screen](../../mobile_build/src/screens/attendance.tsx), [dashboard](../../mobile_build/src/screens/dashboard.tsx), [history](../../mobile_build/app/history.tsx), [login screen](../../mobile_build/src/screens/login.tsx), [app layout](../../mobile_build/app/_layout.tsx), [backend attendance routes](../../backend/index.js), and [backend integration tests](../../backend/tests/phase2.test.mjs).
 
 ## D. Android verification
 
