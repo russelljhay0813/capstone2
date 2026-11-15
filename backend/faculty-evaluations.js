@@ -10,6 +10,13 @@ const canonicalQuestionCondition = canonicalQuestionPairs
   .map(() => "(c.name = ? AND q.questionText = ?)")
   .join(" OR ");
 const canonicalQuestionParams = canonicalQuestionPairs.flat();
+const DEFAULT_RATING_SCALE = [
+  { value: 1, label: "Poor" },
+  { value: 2, label: "Fair" },
+  { value: 3, label: "Satisfactory" },
+  { value: 4, label: "Very Satisfactory" },
+  { value: 5, label: "Excellent" },
+];
 
 class EvaluationError extends Error {
   constructor(status, message) {
@@ -64,6 +71,246 @@ async function ensureConfigurationEditable(db) {
   if (activePeriod) {
     throw new EvaluationError(409, "Close active evaluation periods before changing their questionnaire.");
   }
+}
+
+function validateRatingScale(value) {
+  return Array.isArray(value) &&
+    value.length === 5 &&
+    value.every((item, index) =>
+      item &&
+      item.value === index + 1 &&
+      typeof item.label === "string" &&
+      item.label.trim().length > 0 &&
+      item.label.trim().length <= 60,
+    );
+}
+
+async function saveDraftQuestionnaire(db, evaluationId, categories, ratingScale) {
+  if (!Array.isArray(categories) || categories.length > 30 || !validateRatingScale(ratingScale)) {
+    throw new EvaluationError(400, "Questionnaire categories or rating scale are invalid.");
+  }
+  const normalized = [];
+  for (const [categoryIndex, category] of categories.entries()) {
+    const name = typeof category?.name === "string" ? category.name.trim() : "";
+    if (!name || name.length > 120 || !Array.isArray(category.questions) || category.questions.length > 100) {
+      throw new EvaluationError(400, "Each questionnaire category needs a valid name and question list.");
+    }
+    const description =
+      typeof category.description === "string" ? category.description.trim().slice(0, 500) : "";
+    const questions = [];
+    for (const [questionIndex, question] of category.questions.entries()) {
+      const questionText =
+        typeof question?.questionText === "string" ? question.questionText.trim() : "";
+      if (!questionText || questionText.length > 1000) {
+        throw new EvaluationError(400, "Each evaluation question needs valid question text.");
+      }
+      if (question.questionType !== undefined && question.questionType !== "rating") {
+        throw new EvaluationError(400, "Only rating questions are currently supported.");
+      }
+      questions.push({
+        questionText,
+        isRequired: question.isRequired === false ? 0 : 1,
+        displayOrder: questionIndex + 1,
+      });
+    }
+    normalized.push({ name, description, displayOrder: categoryIndex + 1, questions });
+  }
+
+  await withTransaction(db, async () => {
+    await dbRun(db, "DELETE FROM evaluation_period_questions WHERE evaluationId = ?", [evaluationId]);
+    await dbRun(db, "DELETE FROM evaluation_period_categories WHERE evaluationId = ?", [evaluationId]);
+    for (const category of normalized) {
+      let criteria = await dbGet(db, "SELECT id FROM evaluation_criteria WHERE name = ?", [category.name]);
+      if (!criteria) {
+        criteria = { id: crypto.randomUUID() };
+        await dbRun(
+          db,
+          `INSERT INTO evaluation_criteria (id, name, description, displayOrder, isActive)
+           VALUES (?, ?, ?, ?, 1)`,
+          [criteria.id, category.name, category.description || null, category.displayOrder],
+        );
+      }
+      await dbRun(
+        db,
+        `INSERT INTO evaluation_period_categories
+         (evaluationId, criteriaId, categoryName, description, categoryOrder)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          evaluationId,
+          criteria.id,
+          category.name,
+          category.description || null,
+          category.displayOrder,
+        ],
+      );
+      for (const question of category.questions) {
+        let savedQuestion = await dbGet(
+          db,
+          "SELECT id FROM evaluation_questions WHERE criteriaId = ? AND questionText = ?",
+          [criteria.id, question.questionText],
+        );
+        if (!savedQuestion) {
+          savedQuestion = { id: crypto.randomUUID() };
+          await dbRun(
+            db,
+            `INSERT INTO evaluation_questions
+             (id, criteriaId, questionText, isRequired, displayOrder, isActive)
+             VALUES (?, ?, ?, ?, ?, 1)`,
+            [savedQuestion.id, criteria.id, question.questionText, question.isRequired, question.displayOrder],
+          );
+        }
+        await dbRun(
+          db,
+          `INSERT INTO evaluation_period_questions
+           (evaluationId, questionId, criteriaId, categoryName, categoryOrder, questionText,
+            questionOrder, isRequired, questionType)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'rating')`,
+          [
+            evaluationId,
+            savedQuestion.id,
+            criteria.id,
+            category.name,
+            category.displayOrder,
+            question.questionText,
+            question.displayOrder,
+            question.isRequired,
+          ],
+        );
+      }
+    }
+    await dbRun(
+      db,
+      `UPDATE faculty_evaluations
+       SET ratingScale = ?, questionnaireDraftSaved = 1
+       WHERE id = ?`,
+      [
+         JSON.stringify(ratingScale),
+         evaluationId,
+      ],
+    );
+  });
+}
+
+async function publishQuestionnaire(db, period) {
+  let questions = await dbAll(
+    db,
+    `SELECT criteriaId, categoryName AS category, categoryOrder, questionId, questionText,
+            isRequired, questionType, questionOrder AS displayOrder
+     FROM evaluation_period_questions WHERE evaluationId = ?
+     ORDER BY categoryOrder, questionOrder`,
+    [period.id],
+  );
+  if (!questions.length && !period.questionnaireDraftSaved) {
+    await dbRun(
+      db,
+      `INSERT OR IGNORE INTO evaluation_period_questions
+       (evaluationId, questionId, criteriaId, categoryName, categoryOrder, questionText,
+        questionOrder, isRequired, questionType)
+       SELECT ?, q.id, c.id, c.name, c.displayOrder, q.questionText, q.displayOrder, 1, 'rating'
+       FROM evaluation_questions q
+       JOIN evaluation_criteria c ON c.id = q.criteriaId
+       WHERE ${canonicalQuestionCondition}`,
+      [period.id, ...canonicalQuestionParams],
+    );
+    questions = await dbAll(
+      db,
+      `SELECT criteriaId, categoryName AS category, categoryOrder, questionId, questionText,
+              isRequired, questionType, questionOrder AS displayOrder
+       FROM evaluation_period_questions WHERE evaluationId = ?
+       ORDER BY categoryOrder, questionOrder`,
+      [period.id],
+    );
+  }
+  if (!questions.length || !questions.some((question) => question.isRequired)) {
+    throw new EvaluationError(409, "Add at least one required question before publishing.");
+  }
+  if (questions.some((question) => question.questionType !== "rating")) {
+    throw new EvaluationError(409, "The questionnaire contains an unsupported question type.");
+  }
+  let ratingScale;
+  try {
+    ratingScale = JSON.parse(period.ratingScale || "null");
+  } catch {
+    ratingScale = null;
+  }
+  if (!validateRatingScale(ratingScale)) {
+    throw new EvaluationError(409, "Configure all five rating labels before publishing.");
+  }
+  const categoryRows = await dbAll(
+    db,
+    `SELECT criteriaId, categoryName AS name, description, categoryOrder AS displayOrder
+     FROM evaluation_period_categories WHERE evaluationId = ?
+     ORDER BY categoryOrder`,
+    [period.id],
+  );
+  const categoriesById = new Map(
+    categoryRows.map((category) => [category.criteriaId, { ...category, questions: [] }]),
+  );
+  for (const question of questions) {
+    let category = categoriesById.get(question.criteriaId);
+    if (!category) {
+      category = {
+        criteriaId: question.criteriaId,
+        name: question.category,
+        description: null,
+        displayOrder: question.categoryOrder,
+        questions: [],
+      };
+      categoriesById.set(question.criteriaId, category);
+    }
+    category.questions.push({
+      questionId: question.questionId,
+      questionText: question.questionText,
+      isRequired: Boolean(question.isRequired),
+      questionType: question.questionType,
+      displayOrder: question.displayOrder,
+    });
+  }
+  const version = Number(period.questionnaireVersion || 0) + 1;
+  const questionnaire = {
+    version,
+    ratingScale,
+    categories: [...categoriesById.values()],
+    questions,
+  };
+  await dbRun(
+    db,
+    `INSERT INTO evaluation_questionnaire_versions
+     (id, evaluationId, version, questionnaireJson, publishedAt)
+     VALUES (?, ?, ?, ?, ?)`,
+    [crypto.randomUUID(), period.id, version, JSON.stringify(questionnaire), Date.now()],
+  );
+  return version;
+}
+
+async function loadPublishedQuestionnaire(db, period) {
+  const version = Number(period.questionnaireVersion || 0);
+  if (version < 1) {
+    throw new EvaluationError(409, "This evaluation has no published questionnaire.");
+  }
+  const row = await dbGet(
+    db,
+    `SELECT questionnaireJson FROM evaluation_questionnaire_versions
+     WHERE evaluationId = ? AND version = ?`,
+    [period.id, version],
+  );
+  if (!row) {
+    throw new EvaluationError(409, "The published questionnaire version is unavailable.");
+  }
+  let questionnaire;
+  try {
+    questionnaire = JSON.parse(row.questionnaireJson);
+  } catch {
+    throw new EvaluationError(500, "The published questionnaire snapshot is invalid.");
+  }
+  if (
+    !questionnaire ||
+    !Array.isArray(questionnaire.questions) ||
+    !validateRatingScale(questionnaire.ratingScale)
+  ) {
+    throw new EvaluationError(500, "The published questionnaire snapshot is incomplete.");
+  }
+  return questionnaire;
 }
 
 function reportFilters(query, alias = "ev") {
@@ -261,6 +508,25 @@ async function loadEvaluationReport(db, query) {
 
 export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
   app.get(
+    "/api/evaluations/questionnaire/default",
+    requireRole("admin"),
+    (_req, res) => {
+      res.json({
+        categories: FACULTY_EVALUATION_QUESTIONNAIRE.map((category) => ({
+          name: category.name,
+          description: category.description,
+          questions: category.questions.map((questionText) => ({
+            questionText,
+            isRequired: true,
+            questionType: "rating",
+          })),
+        })),
+        ratingScale: DEFAULT_RATING_SCALE,
+      });
+    },
+  );
+
+  app.get(
     "/api/evaluations/periods",
     requireRole("admin", "registrar", "student"),
     asyncRoute(async (req, res) => {
@@ -271,7 +537,7 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
          FROM faculty_evaluations ev
          JOIN academicYears ay ON ay.id = ev.academicYearId
          JOIN semesters sem ON sem.id = ev.semesterId
-         ${req.userContext.role === "student" ? "WHERE ev.status = 'active'" : ""}
+         ${req.userContext.role === "student" ? "WHERE ev.status = 'active' AND ev.questionnaireVersion > 0" : ""}
          ORDER BY ay.code DESC, sem.sequence DESC, ev.createdAt DESC`,
       );
       res.json(
@@ -394,46 +660,26 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
         [semesterId, academicYearId],
       );
       if (!semester) return res.status(400).json({ error: "Semester does not belong to the selected academic year." });
-      if (status === "active") {
-        const canonicalQuestions = await dbGet(
-          db,
-          `SELECT COUNT(*) AS count
-           FROM evaluation_questions q
-           JOIN evaluation_criteria c ON c.id = q.criteriaId
-           WHERE ${canonicalQuestionCondition}`,
-          canonicalQuestionParams,
-        );
-        if (Number(canonicalQuestions?.count || 0) !== 18) {
-          return res.status(500).json({ error: "The required 18-question faculty questionnaire is not configured." });
-        }
-      }
       try {
         if (status === "active") {
           await withTransaction(db, async () => {
-            await dbRun(
-              db,
-              `INSERT OR IGNORE INTO evaluation_period_questions
-               (evaluationId, questionId, criteriaId, categoryName, categoryOrder, questionText, questionOrder, isRequired)
-               SELECT ?, q.id, c.id, c.name, c.displayOrder, q.questionText, q.displayOrder, 1
-               FROM evaluation_questions q
-               JOIN evaluation_criteria c ON c.id = q.criteriaId
-               WHERE ${canonicalQuestionCondition}`,
-              [req.params.id, ...canonicalQuestionParams],
-            );
-            const snapshotCount = await dbGet(
-              db,
-              "SELECT COUNT(*) AS count FROM evaluation_period_questions WHERE evaluationId = ?",
-              [req.params.id],
-            );
-            if (Number(snapshotCount?.count || 0) !== 18) {
-              throw new EvaluationError(409, "The evaluation questionnaire must contain exactly 18 questions.");
-            }
+            const questionnaireVersion = await publishQuestionnaire(db, period);
             await dbRun(
               db,
               `UPDATE faculty_evaluations
-               SET title = ?, academicYearId = ?, semesterId = ?, startDate = ?, endDate = ?, status = ?
+               SET title = ?, academicYearId = ?, semesterId = ?, startDate = ?, endDate = ?,
+                   status = ?, questionnaireVersion = ?
                WHERE id = ?`,
-              [title, academicYearId, semesterId, startDate, endDate, status, req.params.id],
+              [
+                title,
+                academicYearId,
+                semesterId,
+                startDate,
+                endDate,
+                status,
+                questionnaireVersion,
+                req.params.id,
+              ],
             );
           });
         } else {
@@ -451,7 +697,109 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
         }
         throw error;
       }
-      res.json({ ...period, title, academicYearId, semesterId, startDate, endDate, status });
+      res.json({
+        ...period,
+        title,
+        academicYearId,
+        semesterId,
+        startDate,
+        endDate,
+        status,
+        questionnaireVersion: status === "active" ? Number(period.questionnaireVersion || 0) + 1 : period.questionnaireVersion,
+      });
+    }),
+  );
+
+  app.get(
+    "/api/evaluations/periods/:id/questionnaire",
+    requireRole("admin"),
+    asyncRoute(async (req, res) => {
+      const period = await dbGet(
+        db,
+        "SELECT id, status, ratingScale, questionnaireVersion FROM faculty_evaluations WHERE id = ?",
+        [req.params.id],
+      );
+      if (!period) return res.status(404).json({ error: "Evaluation period not found." });
+      const questions = await dbAll(
+        db,
+        `SELECT criteriaId, categoryName AS category, categoryOrder, questionId, questionText,
+                isRequired, questionType, questionOrder AS displayOrder
+         FROM evaluation_period_questions WHERE evaluationId = ?
+         ORDER BY categoryOrder, questionOrder`,
+        [req.params.id],
+      );
+      const categories = await dbAll(
+        db,
+        `SELECT criteriaId, categoryName AS name, description, categoryOrder AS displayOrder
+         FROM evaluation_period_categories WHERE evaluationId = ?
+         ORDER BY categoryOrder`,
+        [req.params.id],
+      );
+      const categoriesById = new Map(
+        categories.map((category) => [category.criteriaId, { ...category, questions: [] }]),
+      );
+      for (const question of questions) {
+        let category = categoriesById.get(question.criteriaId);
+        if (!category) {
+          category = {
+            criteriaId: question.criteriaId,
+            name: question.category,
+            description: null,
+            displayOrder: question.categoryOrder,
+            questions: [],
+          };
+          categoriesById.set(question.criteriaId, category);
+        }
+        category.questions.push({
+          questionText: question.questionText,
+          isRequired: Boolean(question.isRequired),
+          questionType: question.questionType,
+        });
+      }
+      let ratingScale;
+      try {
+        ratingScale = JSON.parse(period.ratingScale);
+      } catch {
+        throw new EvaluationError(500, "The saved evaluation rating scale is invalid.");
+      }
+      res.json({
+        status: period.status,
+        version: period.questionnaireVersion,
+        ratingScale,
+        categories: [...categoriesById.values()],
+        questions,
+      });
+    }),
+  );
+
+  app.put(
+    "/api/evaluations/periods/:id/questionnaire",
+    requireRole("admin"),
+    asyncRoute(async (req, res) => {
+      const period = await dbGet(
+        db,
+        "SELECT id, status, questionnaireVersion FROM faculty_evaluations WHERE id = ?",
+        [req.params.id],
+      );
+      if (!period) return res.status(404).json({ error: "Evaluation period not found." });
+      if (period.status !== "draft" || Number(period.questionnaireVersion || 0) > 0) {
+        return res.status(409).json({ error: "Only an unpublished draft questionnaire can be edited." });
+      }
+      await saveDraftQuestionnaire(
+        db,
+        period.id,
+        req.body?.categories,
+        req.body?.ratingScale,
+      );
+      const questions = await dbAll(
+        db,
+        `SELECT criteriaId, categoryName AS category, categoryOrder, questionId, questionText,
+                isRequired, questionType, questionOrder AS displayOrder
+         FROM evaluation_period_questions WHERE evaluationId = ?
+         ORDER BY categoryOrder, questionOrder`,
+        [period.id],
+      );
+      res.json({ saved: true, questions });
     }),
   );
 
@@ -606,35 +954,87 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
     asyncRoute(async (req, res) => {
       const period = await dbGet(db, "SELECT * FROM faculty_evaluations WHERE id = ?", [req.params.id]);
       if (!period) return res.status(404).json({ error: "Evaluation period not found." });
-      if (req.userContext.role === "student" && !isOpen(period)) {
-        return res.status(403).json({ error: "This evaluation period is not open." });
-      }
-      const questionCount = await dbGet(
-        db,
-        "SELECT COUNT(*) AS count FROM evaluation_period_questions WHERE evaluationId = ?",
-        [req.params.id],
-      );
-      const rows = Number(questionCount?.count || 0) > 0
-        ? await dbAll(
+      if (req.userContext.role === "student") {
+        if (!isOpen(period) || Number(period.questionnaireVersion || 0) < 1) {
+          return res.status(403).json({ error: "This evaluation period is not open." });
+        }
+        const student = await findStudent(db, req.userContext);
+        const subjectOfferingId = String(req.query.subjectOfferingId || "").trim();
+        const eligible = student && await dbGet(
           db,
-          `SELECT pq.criteriaId, pq.categoryName AS category, pq.categoryOrder,
-                  pq.questionId, pq.questionText, pq.isRequired, pq.questionOrder AS displayOrder
-           FROM evaluation_period_questions pq
-           WHERE pq.evaluationId = ?
-           ORDER BY pq.categoryOrder, pq.questionOrder, pq.questionText`,
-          [req.params.id],
-        )
-        : await dbAll(
-          db,
-          `SELECT c.id AS criteriaId, c.name AS category, c.displayOrder AS categoryOrder,
-                  q.id AS questionId, q.questionText, 1 AS isRequired, q.displayOrder
-           FROM evaluation_questions q
-           JOIN evaluation_criteria c ON c.id = q.criteriaId
-           WHERE ${canonicalQuestionCondition}
-           ORDER BY c.displayOrder, q.displayOrder, q.questionText`,
-          canonicalQuestionParams,
+          `SELECT o.id
+           FROM subjectOfferings o
+           JOIN enrollments e ON e.subjectOfferingId = o.id AND e.studentId = ?
+             AND e.status = 'enrolled'
+           WHERE o.academicYearId = ? AND o.semesterId = ? AND o.facultyId IS NOT NULL
+             AND (? = '' OR o.id = ?)
+             AND NOT EXISTS (
+               SELECT 1 FROM evaluation_participation ep
+               WHERE ep.evaluationId = ? AND ep.studentId = e.studentId
+                 AND ep.subjectOfferingId = o.id
+             )
+           LIMIT 1`,
+          [
+            student?.id || "",
+            period.academicYearId,
+            period.semesterId,
+            subjectOfferingId,
+            subjectOfferingId,
+            period.id,
+          ],
         );
-      res.json(rows);
+        if (!eligible) return res.status(403).json({ error: "You are not eligible to answer this evaluation." });
+      }
+      let rows;
+      let ratingScale;
+      if (Number(period.questionnaireVersion || 0) > 0) {
+        const published = await loadPublishedQuestionnaire(db, period);
+        rows = published.questions.map((question) => ({
+          criteriaId: question.criteriaId,
+          category: question.category,
+          categoryOrder: question.categoryOrder,
+          questionId: question.questionId,
+          questionText: question.questionText,
+          isRequired: question.isRequired ? 1 : 0,
+          questionType: question.questionType,
+          displayOrder: question.displayOrder,
+        }));
+        ratingScale = published.ratingScale;
+      } else {
+        const questionCount = await dbGet(
+          db,
+          "SELECT COUNT(*) AS count FROM evaluation_period_questions WHERE evaluationId = ?",
+          [req.params.id],
+        );
+        rows = Number(questionCount?.count || 0) > 0
+          ? await dbAll(
+            db,
+            `SELECT pq.criteriaId, pq.categoryName AS category, pq.categoryOrder,
+                    pq.questionId, pq.questionText, pq.isRequired, pq.questionType,
+                    pq.questionOrder AS displayOrder
+             FROM evaluation_period_questions pq
+             WHERE pq.evaluationId = ?
+             ORDER BY pq.categoryOrder, pq.questionOrder, pq.questionText`,
+            [req.params.id],
+          )
+          : await dbAll(
+            db,
+            `SELECT c.id AS criteriaId, c.name AS category, c.displayOrder AS categoryOrder,
+                    q.id AS questionId, q.questionText, 1 AS isRequired, 'rating' AS questionType,
+                    q.displayOrder
+             FROM evaluation_questions q
+             JOIN evaluation_criteria c ON c.id = q.criteriaId
+             WHERE ${canonicalQuestionCondition}
+             ORDER BY c.displayOrder, q.displayOrder, q.questionText`,
+            canonicalQuestionParams,
+          );
+        try {
+          ratingScale = JSON.parse(period.ratingScale || JSON.stringify(DEFAULT_RATING_SCALE));
+        } catch {
+          throw new EvaluationError(500, "The saved evaluation rating scale is invalid.");
+        }
+      }
+      res.json(rows.map((row) => ({ ...row, ratingScale })));
     }),
   );
 
@@ -652,6 +1052,7 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
          JOIN academicYears ay ON ay.id = ev.academicYearId
          JOIN semesters sem ON sem.id = ev.semesterId
          WHERE ev.status IN ('active', 'closed')
+           AND (ev.status = 'closed' OR ev.questionnaireVersion > 0)
          ORDER BY ev.createdAt DESC`,
       );
       if (!periods.length) return res.json([]);
@@ -682,7 +1083,9 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
         [student.id, ...periods.map((period) => period.id)],
       );
       const openPeriodIds = new Set(periods.filter(isOpen).map((period) => period.id));
-      res.json(rows.map((row) => ({
+      res.json(rows.filter((row) =>
+        openPeriodIds.has(row.evaluationId) || Boolean(row.completed),
+      ).map((row) => ({
         ...row,
         canSubmit: openPeriodIds.has(row.evaluationId) && !row.completed,
       })));
@@ -707,7 +1110,7 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
         typeof evaluationId !== "string" ||
         typeof subjectOfferingId !== "string" ||
         !Array.isArray(answers) ||
-        answers.length !== 18 ||
+        answers.length > 200 ||
         commentFields.some(
           (comment) =>
             comment !== undefined &&
@@ -720,7 +1123,7 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
       const student = await findStudent(db, req.userContext);
       if (!student) return res.status(403).json({ error: "A linked student record is required." });
       const period = await dbGet(db, "SELECT * FROM faculty_evaluations WHERE id = ?", [evaluationId]);
-      if (!period || !isOpen(period)) {
+      if (!period || !isOpen(period) || Number(period.questionnaireVersion || 0) < 1) {
         return res.status(409).json({ error: "This evaluation period is closed or unavailable." });
       }
       const offering = await dbGet(
@@ -733,16 +1136,14 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
         [subjectOfferingId, student.id, period.academicYearId, period.semesterId],
       );
       if (!offering) return res.status(403).json({ error: "You are not enrolled in this faculty assignment." });
-      const questions = await dbAll(
-        db,
-        `SELECT q.id, pq.isRequired
-         FROM evaluation_period_questions pq
-         JOIN evaluation_questions q ON q.id = pq.questionId
-         WHERE pq.evaluationId = ?`,
-        [evaluationId],
-      );
-      if (questions.length !== 18 || questions.some((question) => !question.isRequired)) {
-        return res.status(409).json({ error: "This evaluation does not have the required 18-question questionnaire." });
+      const published = await loadPublishedQuestionnaire(db, period);
+      const questions = published.questions.map((question) => ({
+        id: question.questionId,
+        isRequired: question.isRequired ? 1 : 0,
+        questionType: question.questionType,
+      }));
+      if (!questions.length || !questions.some((question) => question.isRequired)) {
+        return res.status(409).json({ error: "This evaluation does not have a publishable questionnaire." });
       }
       const questionMap = new Map(questions.map((question) => [question.id, question]));
       const answerMap = new Map();
@@ -763,16 +1164,23 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
       if (questions.some((question) => question.isRequired && !answerMap.has(question.id))) {
         return res.status(400).json({ error: "Answer every required evaluation question." });
       }
-      if (answerMap.size !== 18) return res.status(400).json({ error: "Answer all 18 evaluation questions." });
+      if (questions.some((question) => answerMap.has(question.id) && question.questionType !== "rating")) {
+        return res.status(400).json({ error: "An answer does not match the published question type." });
+      }
 
       try {
         await withTransaction(db, async () => {
           const currentPeriod = await dbGet(
             db,
-            "SELECT status, startDate, endDate, academicYearId, semesterId FROM faculty_evaluations WHERE id = ?",
+            `SELECT status, startDate, endDate, academicYearId, semesterId, questionnaireVersion
+             FROM faculty_evaluations WHERE id = ?`,
             [evaluationId],
           );
-          if (!currentPeriod || !isOpen(currentPeriod)) {
+          if (
+            !currentPeriod ||
+            !isOpen(currentPeriod) ||
+            Number(currentPeriod.questionnaireVersion) !== Number(period.questionnaireVersion)
+          ) {
             throw new EvaluationError(409, "This evaluation period is closed or unavailable.");
           }
           const currentOffering = await dbGet(

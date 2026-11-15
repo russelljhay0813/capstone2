@@ -164,6 +164,19 @@ async function ensureFacultyEvaluationSchema(db) {
   );
   await run(
     db,
+    `CREATE TABLE IF NOT EXISTS evaluation_period_categories (
+      evaluationId TEXT NOT NULL,
+      criteriaId TEXT NOT NULL,
+      categoryName TEXT NOT NULL,
+      description TEXT,
+      categoryOrder INTEGER NOT NULL,
+      PRIMARY KEY(evaluationId, criteriaId),
+      FOREIGN KEY (evaluationId) REFERENCES faculty_evaluations(id) ON DELETE CASCADE,
+      FOREIGN KEY (criteriaId) REFERENCES evaluation_criteria(id) ON DELETE RESTRICT
+    )`,
+  );
+  await run(
+    db,
     `CREATE TABLE IF NOT EXISTS evaluation_period_questions (
       evaluationId TEXT NOT NULL,
       questionId TEXT NOT NULL,
@@ -173,10 +186,47 @@ async function ensureFacultyEvaluationSchema(db) {
       questionText TEXT NOT NULL,
       questionOrder INTEGER NOT NULL,
       isRequired INTEGER NOT NULL CHECK(isRequired IN (0, 1)),
+      questionType TEXT NOT NULL DEFAULT 'rating' CHECK(questionType IN ('rating')),
       PRIMARY KEY(evaluationId, questionId),
       FOREIGN KEY (evaluationId) REFERENCES faculty_evaluations(id) ON DELETE CASCADE,
       FOREIGN KEY (questionId) REFERENCES evaluation_questions(id) ON DELETE RESTRICT,
       FOREIGN KEY (criteriaId) REFERENCES evaluation_criteria(id) ON DELETE RESTRICT
+    )`,
+  );
+  await addColumnIfMissing(
+    db,
+    "evaluation_period_questions",
+    "questionType",
+    "TEXT NOT NULL DEFAULT 'rating'",
+  );
+  await addColumnIfMissing(
+    db,
+    "faculty_evaluations",
+    "ratingScale",
+    "TEXT NOT NULL DEFAULT '[{\"value\":1,\"label\":\"Poor\"},{\"value\":2,\"label\":\"Fair\"},{\"value\":3,\"label\":\"Satisfactory\"},{\"value\":4,\"label\":\"Very Satisfactory\"},{\"value\":5,\"label\":\"Excellent\"}]'",
+  );
+  await addColumnIfMissing(
+    db,
+    "faculty_evaluations",
+    "questionnaireVersion",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+  await addColumnIfMissing(
+    db,
+    "faculty_evaluations",
+    "questionnaireDraftSaved",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS evaluation_questionnaire_versions (
+      id TEXT PRIMARY KEY,
+      evaluationId TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      questionnaireJson TEXT NOT NULL,
+      publishedAt INTEGER NOT NULL,
+      FOREIGN KEY (evaluationId) REFERENCES faculty_evaluations(id) ON DELETE CASCADE,
+      UNIQUE(evaluationId, version)
     )`,
   );
   await run(
@@ -256,6 +306,10 @@ async function ensureFacultyEvaluationSchema(db) {
     db,
     "CREATE INDEX IF NOT EXISTS idx_evaluation_answers_response ON evaluation_answers(responseId)",
   );
+  await run(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_questionnaire_versions_evaluation ON evaluation_questionnaire_versions(evaluationId, version)",
+  );
 
   for (const [categoryOrder, category] of FACULTY_EVALUATION_QUESTIONNAIRE.entries()) {
     await run(
@@ -282,6 +336,75 @@ async function ensureFacultyEvaluationSchema(db) {
         ],
       );
     }
+  }
+  const legacyPublishedPeriods = await all(
+    db,
+    `SELECT id, createdAt, ratingScale
+     FROM faculty_evaluations
+     WHERE status IN ('active', 'closed') AND questionnaireVersion = 0`,
+  );
+  const defaultScale = [
+    { value: 1, label: "Poor" },
+    { value: 2, label: "Fair" },
+    { value: 3, label: "Satisfactory" },
+    { value: 4, label: "Very Satisfactory" },
+    { value: 5, label: "Excellent" },
+  ];
+  for (const period of legacyPublishedPeriods) {
+    let questions = await all(
+      db,
+      `SELECT criteriaId, categoryName AS category, categoryOrder, questionId, questionText,
+              isRequired, questionType, questionOrder AS displayOrder
+       FROM evaluation_period_questions
+       WHERE evaluationId = ? ORDER BY categoryOrder, questionOrder`,
+      [period.id],
+    );
+    if (!questions.length) {
+      await run(
+        db,
+        `INSERT OR IGNORE INTO evaluation_period_questions
+         (evaluationId, questionId, criteriaId, categoryName, categoryOrder, questionText,
+          questionOrder, isRequired, questionType)
+         SELECT ?, q.id, c.id, c.name, c.displayOrder, q.questionText, q.displayOrder, 1, 'rating'
+         FROM evaluation_questions q
+         JOIN evaluation_criteria c ON c.id = q.criteriaId
+         WHERE ${FACULTY_EVALUATION_QUESTIONNAIRE.flatMap((category) =>
+           category.questions.map(() => "(c.name = ? AND q.questionText = ?)"),
+         ).join(" OR ")}`,
+        [
+          period.id,
+          ...FACULTY_EVALUATION_QUESTIONNAIRE.flatMap((category) =>
+            category.questions.flatMap((questionText) => [category.name, questionText]),
+          ),
+        ],
+      );
+      questions = await all(
+        db,
+        `SELECT criteriaId, categoryName AS category, categoryOrder, questionId, questionText,
+                isRequired, questionType, questionOrder AS displayOrder
+         FROM evaluation_period_questions
+         WHERE evaluationId = ? ORDER BY categoryOrder, questionOrder`,
+        [period.id],
+      );
+    }
+    let ratingScale = defaultScale;
+    try {
+      const savedScale = JSON.parse(period.ratingScale);
+      if (Array.isArray(savedScale) && savedScale.length === 5) ratingScale = savedScale;
+    } catch {
+      // Use the canonical scale for legacy periods with invalid settings.
+    }
+    const snapshot = { version: 1, ratingScale, questions };
+    await run(
+      db,
+      `INSERT OR IGNORE INTO evaluation_questionnaire_versions
+       (id, evaluationId, version, questionnaireJson, publishedAt)
+       VALUES (?, ?, 1, ?, ?)`,
+      [crypto.randomUUID(), period.id, JSON.stringify(snapshot), period.createdAt || Date.now()],
+    );
+    await run(db, "UPDATE faculty_evaluations SET questionnaireVersion = 1 WHERE id = ?", [
+      period.id,
+    ]);
   }
 }
 

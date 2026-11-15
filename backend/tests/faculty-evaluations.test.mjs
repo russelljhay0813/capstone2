@@ -250,6 +250,28 @@ before(async () => {
   );
   assert.equal(createdPeriod.status, 201, JSON.stringify(createdPeriod.data));
   evaluationId = createdPeriod.data.id;
+  assert.ok(evaluationId);
+  assert.equal(createdPeriod.data.status, "draft");
+  assert.equal(createdPeriod.data.academicYearId, selectedOffering.academicYearId);
+  assert.equal(createdPeriod.data.semesterId, selectedOffering.semesterId);
+  assert.equal(createdPeriod.data.startDate, "2000-01-01");
+  assert.equal(createdPeriod.data.endDate, "2099-12-31");
+  const periodDb = openTestDatabase();
+  const persistedPeriod = await dbGet(
+    periodDb,
+    `SELECT id, academicYearId, semesterId, startDate, endDate, status
+     FROM faculty_evaluations WHERE id = ?`,
+    [evaluationId],
+  );
+  await closeDatabase(periodDb);
+  assert.deepEqual(persistedPeriod, {
+    id: evaluationId,
+    academicYearId: selectedOffering.academicYearId,
+    semesterId: selectedOffering.semesterId,
+    startDate: "2000-01-01",
+    endDate: "2099-12-31",
+    status: "draft",
+  });
   const duplicatePeriod = await request(
     "POST",
     "/api/evaluations/periods",
@@ -590,4 +612,371 @@ test("evaluation response schema contains no student identity or participation f
   const integrity = await dbGet(db, "PRAGMA integrity_check");
   assert.equal(integrity.integrity_check, "ok");
   await closeDatabase(db);
+});
+
+test("student eligibility hides unavailable periods and preserves completed history", async () => {
+  const student = await createAccount("student", "EvaluationNoEnrollment");
+  const db = openTestDatabase();
+  const studentRow = await dbGet(db, "SELECT id FROM students WHERE userId = ?", [
+    student.account.id,
+  ]);
+  assert.ok(studentRow);
+  const noEnrollmentResult = await request(
+    "GET",
+    "/api/evaluations/eligible",
+    undefined,
+    student.token,
+  );
+  assert.equal(noEnrollmentResult.status, 200);
+  assert.deepEqual(noEnrollmentResult.data, []);
+
+  await dbRun(
+    db,
+    `INSERT INTO enrollments (id, studentId, subjectOfferingId, status, enrolledAt)
+     VALUES (?, ?, ?, 'enrolled', ?)`,
+    [crypto.randomUUID(), studentRow.id, selectedOffering.id, Date.now()],
+  );
+  const faculty = await dbGet(db, "SELECT facultyId FROM subjectOfferings WHERE id = ?", [
+    selectedOffering.id,
+  ]);
+  assert.ok(faculty?.facultyId);
+  await dbRun(db, "UPDATE subjectOfferings SET facultyId = ? WHERE id = ?", [
+    faculty.facultyId,
+    unrelatedOffering.id,
+  ]);
+  await dbRun(
+    db,
+    `INSERT INTO enrollments (id, studentId, subjectOfferingId, status, enrolledAt)
+     VALUES (?, ?, ?, 'enrolled', ?)`,
+    [crypto.randomUUID(), studentRow.id, unrelatedOffering.id, Date.now()],
+  );
+  await dbRun(
+    db,
+    "UPDATE faculty_evaluations SET status = 'active', startDate = '2000-01-01', endDate = '2099-12-31' WHERE id = ?",
+    [separateSemesterEvaluationId],
+  );
+  for (const period of [
+    { status: "draft", startDate: "2000-01-01", endDate: "2099-12-31" },
+    { status: "closed", startDate: "2000-01-01", endDate: "2099-12-31" },
+    { status: "active", startDate: "2000-01-01", endDate: "2000-01-02" },
+  ]) {
+    await dbRun(
+      db,
+      "UPDATE faculty_evaluations SET status = ?, startDate = ?, endDate = ? WHERE id = ?",
+      [period.status, period.startDate, period.endDate, evaluationId],
+    );
+    const unavailable = await request(
+      "GET",
+      "/api/evaluations/eligible",
+      undefined,
+      student.token,
+    );
+    assert.equal(unavailable.status, 200);
+    assert.deepEqual(unavailable.data, []);
+  }
+
+  await dbRun(
+    db,
+    "UPDATE faculty_evaluations SET status = 'active', startDate = '2000-01-01', endDate = '2099-12-31' WHERE id = ?",
+    [evaluationId],
+  );
+  const pending = await request(
+    "GET",
+    "/api/evaluations/eligible",
+    undefined,
+    student.token,
+  );
+  assert.equal(pending.status, 200);
+  assert.equal(pending.data.length, 2);
+  assert.deepEqual(
+    new Set(pending.data.map((assignment) => assignment.subjectOfferingId)),
+    new Set([selectedOffering.id, unrelatedOffering.id]),
+  );
+  assert.ok(pending.data.every((assignment) => assignment.completed === 0));
+  assert.ok(pending.data.every((assignment) => assignment.canSubmit));
+
+  await dbRun(
+    db,
+    "UPDATE faculty_evaluations SET status = 'closed' WHERE id = ?",
+    [evaluationId],
+  );
+  const completedHistory = await request(
+    "GET",
+    "/api/evaluations/eligible",
+    undefined,
+    students[0].token,
+  );
+  assert.equal(completedHistory.status, 200);
+  assert.equal(completedHistory.data.length, 1);
+  assert.equal(completedHistory.data[0].completed, 1);
+  assert.equal(completedHistory.data[0].canSubmit, false);
+  const integrity = await dbGet(db, "PRAGMA integrity_check");
+  assert.equal(integrity.integrity_check, "ok");
+  const foreignKeyViolations = await new Promise((resolve, reject) => {
+    db.all("PRAGMA foreign_key_check", (error, rows) =>
+      error ? reject(error) : resolve(rows),
+    );
+  });
+  assert.deepEqual(foreignKeyViolations, []);
+  await closeDatabase(db);
+});
+
+test("admin questionnaire drafts publish immutable questions for eligible student submissions", async () => {
+  const db = openTestDatabase();
+  const offeringContext = await dbGet(
+    db,
+    `SELECT ay.id AS academicYearId, ay.code, sem.id AS semesterId
+     FROM academicYears ay
+     JOIN semesters sem ON sem.academicYearId = ay.id AND sem.sequence = 1
+     WHERE NOT EXISTS (
+       SELECT 1 FROM faculty_evaluations ev
+       WHERE ev.academicYearId = ay.id AND ev.semesterId = sem.id
+     )
+     LIMIT 1`,
+  );
+  const program = await dbGet(db, "SELECT id FROM programs ORDER BY name LIMIT 1");
+  const subject = await dbGet(db, "SELECT id FROM subjects ORDER BY code LIMIT 1");
+  const faculty = await dbGet(
+    db,
+    "SELECT facultyId FROM subjectOfferings WHERE id = ?",
+    [selectedOffering.id],
+  );
+  assert.ok(offeringContext && program && subject && faculty?.facultyId);
+  const sectionId = crypto.randomUUID();
+  const subjectOfferingId = crypto.randomUUID();
+  await dbRun(
+    db,
+    `INSERT INTO sections
+     (id, code, name, programId, yearLevel, semesterId, academicYearId, status, createdAt)
+     VALUES (?, ?, ?, ?, '1st Year', ?, ?, 'active', ?)`,
+    [
+      sectionId,
+      `EVAL-PUBLISH-${crypto.randomUUID()}`,
+      "Questionnaire Publish Test Section",
+      program.id,
+      offeringContext.semesterId,
+      offeringContext.academicYearId,
+      Date.now(),
+    ],
+  );
+  await dbRun(
+    db,
+    `INSERT INTO subjectOfferings
+     (id, subjectId, academicYearId, semesterId, sectionId, facultyId, schedule, room, status, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, 'TBA', 'TBA', 'active', ?)`,
+    [
+      subjectOfferingId,
+      subject.id,
+      offeringContext.academicYearId,
+      offeringContext.semesterId,
+      sectionId,
+      faculty.facultyId,
+      Date.now(),
+    ],
+  );
+  for (const student of students) {
+    await dbRun(
+      db,
+      `INSERT INTO enrollments (id, studentId, subjectOfferingId, status, enrolledAt)
+       VALUES (?, ?, ?, 'enrolled', ?)`,
+      [crypto.randomUUID(), student.studentUuid, subjectOfferingId, Date.now()],
+    );
+  }
+  await closeDatabase(db);
+
+  const created = await request(
+    "POST",
+    "/api/evaluations/periods",
+    {
+      title: "Editable faculty questionnaire",
+      academicYearId: offeringContext.academicYearId,
+      semesterId: offeringContext.semesterId,
+      startDate: "2000-01-01",
+      endDate: "2099-12-31",
+    },
+    adminToken,
+  );
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const customEvaluationId = created.data.id;
+  const categories = [
+    {
+      name: "Course-specific criteria",
+      questions: [
+        {
+          questionText: "The instructor explains the course objectives.",
+          isRequired: true,
+          questionType: "rating",
+        },
+        {
+          questionText: "The instructor uses helpful learning materials.",
+          isRequired: false,
+          questionType: "rating",
+        },
+      ],
+    },
+  ];
+  const ratingScale = [
+    { value: 1, label: "Needs improvement" },
+    { value: 2, label: "Below expectations" },
+    { value: 3, label: "Meets expectations" },
+    { value: 4, label: "Above expectations" },
+    { value: 5, label: "Outstanding" },
+  ];
+  const saved = await request(
+    "PUT",
+    `/api/evaluations/periods/${customEvaluationId}/questionnaire`,
+    { categories, ratingScale },
+    adminToken,
+  );
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.equal(saved.data.questions.length, 2);
+
+  const beforePublish = await request(
+    "GET",
+    "/api/evaluations/eligible",
+    undefined,
+    students[0].token,
+  );
+  assert.equal(
+    beforePublish.data.some((assignment) => assignment.evaluationId === customEvaluationId),
+    false,
+  );
+  const hiddenQuestions = await request(
+    "GET",
+    `/api/evaluations/periods/${customEvaluationId}/questions?subjectOfferingId=${subjectOfferingId}`,
+    undefined,
+    students[0].token,
+  );
+  assert.equal(hiddenQuestions.status, 403);
+  const studentCannotEdit = await request(
+    "PUT",
+    `/api/evaluations/periods/${customEvaluationId}/questionnaire`,
+    { categories, ratingScale },
+    students[0].token,
+  );
+  assert.equal(studentCannotEdit.status, 403);
+
+  const optionalOnly = await request(
+    "PUT",
+    `/api/evaluations/periods/${customEvaluationId}/questionnaire`,
+    {
+      categories: [
+        {
+          name: categories[0].name,
+          questions: [{ ...categories[0].questions[1], isRequired: false }],
+        },
+      ],
+      ratingScale,
+    },
+    adminToken,
+  );
+  assert.equal(optionalOnly.status, 200);
+  const rejectedPublication = await request(
+    "PUT",
+    `/api/evaluations/periods/${customEvaluationId}`,
+    { status: "active" },
+    adminToken,
+  );
+  assert.equal(rejectedPublication.status, 409);
+
+  const restoredQuestionnaire = await request(
+    "PUT",
+    `/api/evaluations/periods/${customEvaluationId}/questionnaire`,
+    { categories, ratingScale },
+    adminToken,
+  );
+  assert.equal(restoredQuestionnaire.status, 200);
+  const published = await request(
+    "PUT",
+    `/api/evaluations/periods/${customEvaluationId}`,
+    { status: "active" },
+    adminToken,
+  );
+  assert.equal(published.status, 200, JSON.stringify(published.data));
+  assert.equal(published.data.questionnaireVersion, 1);
+  const eligible = await request(
+    "GET",
+    "/api/evaluations/eligible",
+    undefined,
+    students[0].token,
+  );
+  assert.ok(eligible.data.some((assignment) => assignment.evaluationId === customEvaluationId));
+  const studentQuestions = await request(
+    "GET",
+    `/api/evaluations/periods/${customEvaluationId}/questions?subjectOfferingId=${subjectOfferingId}`,
+    undefined,
+    students[0].token,
+  );
+  assert.equal(studentQuestions.status, 200, JSON.stringify(studentQuestions.data));
+  assert.deepEqual(
+    studentQuestions.data.map((question) => question.questionText),
+    categories[0].questions.map((question) => question.questionText),
+  );
+  assert.deepEqual(studentQuestions.data[0].ratingScale, ratingScale);
+  assert.equal(studentQuestions.data[0].isRequired, 1);
+  assert.equal(studentQuestions.data[1].isRequired, 0);
+
+  const changedDraft = await request(
+    "PUT",
+    `/api/evaluations/periods/${customEvaluationId}/questionnaire`,
+    {
+      categories: [{ name: "Changed after publication", questions: categories[0].questions }],
+      ratingScale,
+    },
+    adminToken,
+  );
+  assert.equal(changedDraft.status, 409);
+
+  for (const student of students) {
+    const submitted = await request(
+      "POST",
+      "/api/evaluations/submit",
+      {
+        evaluationId: customEvaluationId,
+        subjectOfferingId,
+        answers: [{ questionId: studentQuestions.data[0].questionId, rating: 4 }],
+      },
+      student.token,
+    );
+    assert.equal(submitted.status, 201, JSON.stringify(submitted.data));
+  }
+  const report = await request(
+    "GET",
+    `/api/evaluations/reports?evaluationId=${customEvaluationId}`,
+    undefined,
+    adminToken,
+  );
+  assert.equal(report.status, 200);
+  assert.equal(report.data.groups.length, 1);
+  assert.equal(report.data.groups[0].responseCount, 5);
+  assert.equal(report.data.groups[0].questions.length, 1);
+  assert.equal(
+    report.data.groups[0].questions[0].questionText,
+    "The instructor explains the course objectives.",
+  );
+  const savedRecords = openTestDatabase();
+  const answerCount = await dbGet(
+    savedRecords,
+    `SELECT COUNT(*) AS count
+     FROM evaluation_answers a
+     JOIN evaluation_responses r ON r.id = a.responseId
+     WHERE r.evaluationId = ?`,
+    [customEvaluationId],
+  );
+  const version = await dbGet(
+    savedRecords,
+    `SELECT version, questionnaireJson
+     FROM evaluation_questionnaire_versions
+     WHERE evaluationId = ?`,
+    [customEvaluationId],
+  );
+  assert.equal(answerCount.count, 5);
+  assert.equal(version.version, 1);
+  assert.deepEqual(JSON.parse(version.questionnaireJson).questions.map((question) => question.questionText), [
+    "The instructor explains the course objectives.",
+    "The instructor uses helpful learning materials.",
+  ]);
+  const integrity = await dbGet(savedRecords, "PRAGMA integrity_check");
+  assert.equal(integrity.integrity_check, "ok");
+  await closeDatabase(savedRecords);
 });

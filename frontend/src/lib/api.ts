@@ -170,14 +170,21 @@ export async function updateSubjectOffering(
 export async function assignSubjectOfferings(
   facultyId: string,
   offeringIds: string[],
-): Promise<{ assignedCount: number; alreadyAssignedCount: number; skippedCount: number; totalAssigned: number }> {
-  return request<{ assignedCount: number; alreadyAssignedCount: number; skippedCount: number; totalAssigned: number }>(
-    "/api/subject-offerings/assign",
-    {
-      method: "POST",
-      body: JSON.stringify({ facultyId, offeringIds }),
-    },
-  );
+): Promise<{
+  assignedCount: number;
+  alreadyAssignedCount: number;
+  skippedCount: number;
+  totalAssigned: number;
+}> {
+  return request<{
+    assignedCount: number;
+    alreadyAssignedCount: number;
+    skippedCount: number;
+    totalAssigned: number;
+  }>("/api/subject-offerings/assign", {
+    method: "POST",
+    body: JSON.stringify({ facultyId, offeringIds }),
+  });
 }
 
 export async function deleteSubjectOffering(id: string): Promise<void> {
@@ -386,8 +393,15 @@ export async function fetchStudents(status?: string): Promise<StudentRegistratio
   return requestAllPages<StudentRegistration>("/api/students", params);
 }
 
-export async function fetchStudentById(studentId: string, authToken?: string): Promise<StudentRegistration> {
-  return request<StudentRegistration>(`/api/students/${encodeURIComponent(studentId)}`, {}, authToken);
+export async function fetchStudentById(
+  studentId: string,
+  authToken?: string,
+): Promise<StudentRegistration> {
+  return request<StudentRegistration>(
+    `/api/students/${encodeURIComponent(studentId)}`,
+    {},
+    authToken,
+  );
 }
 
 export async function updateMyStudentProfile(
@@ -399,7 +413,9 @@ export async function updateMyStudentProfile(
   });
 }
 
-export async function createStudent(student: StudentRegistrationPayload): Promise<StudentRegistration> {
+export async function createStudent(
+  student: StudentRegistrationPayload,
+): Promise<StudentRegistration> {
   return request<StudentRegistration>("/api/students", {
     method: "POST",
     body: JSON.stringify(student),
@@ -407,10 +423,7 @@ export async function createStudent(student: StudentRegistrationPayload): Promis
 }
 
 export async function submitStudentRegistration(
-  registration: Omit<
-    StudentRegistrationPayload,
-    "password" | "educationLevel" | "status"
-  >,
+  registration: Omit<StudentRegistrationPayload, "password" | "educationLevel" | "status">,
 ): Promise<StudentRegistration> {
   return request<StudentRegistration>("/api/students/me/registration", {
     method: "POST",
@@ -420,7 +433,9 @@ export async function submitStudentRegistration(
 
 export async function updateStudent(
   studentId: string,
-  patch: Partial<StudentRegistrationPayload & { status?: string; reviewedAt?: string; reviewNote?: string }>,
+  patch: Partial<
+    StudentRegistrationPayload & { status?: string; reviewedAt?: string; reviewNote?: string }
+  >,
 ): Promise<StudentRegistration> {
   return request<StudentRegistration>(`/api/students/${encodeURIComponent(studentId)}`, {
     method: "PUT",
@@ -442,7 +457,7 @@ export interface UserAccount {
   id: string;
   facultyId?: string;
   userId: string;
-    staffId?: string;
+  staffId?: string;
   username: string;
   email: string;
   firstName: string;
@@ -502,7 +517,7 @@ export async function loginUser(email: string, password: string): Promise<UserAc
 // ---------- ENROLLMENTS (now using subjectOfferingId) ----------
 export interface StudentEnrollment {
   id: string;
-  studentId: string;        // UUID (internal)
+  studentId: string; // UUID (internal)
   subjectOfferingId: string;
   status: "enrolled" | "dropped" | "completed";
   enrolledAt: number;
@@ -531,13 +546,13 @@ export async function fetchEnrollments(
   const studentId =
     typeof studentIdOrFilters === "string"
       ? studentIdOrFilters
-      : studentIdOrFilters?.studentId ?? undefined;
+      : (studentIdOrFilters?.studentId ?? undefined);
   const resolvedOfferingId =
     typeof studentIdOrFilters === "string"
       ? offeringId
-      : studentIdOrFilters?.offeringId ?? offeringId;
+      : (studentIdOrFilters?.offeringId ?? offeringId);
   const resolvedStatus =
-    typeof studentIdOrFilters === "string" ? status : studentIdOrFilters?.status ?? status;
+    typeof studentIdOrFilters === "string" ? status : (studentIdOrFilters?.status ?? status);
 
   if (studentId) params.set("studentId", studentId);
   if (resolvedOfferingId) params.set("offeringId", resolvedOfferingId);
@@ -546,8 +561,8 @@ export async function fetchEnrollments(
 }
 
 export async function createEnrollments(data: {
-  studentId: string;        // human-readable studentId
-  offeringIds: string[];    // array of subjectOffering UUIDs
+  studentId: string; // human-readable studentId
+  offeringIds: string[]; // array of subjectOffering UUIDs
 }): Promise<StudentEnrollment[]> {
   return request<StudentEnrollment[]>("/api/enrollments", {
     method: "POST",
@@ -558,7 +573,7 @@ export async function createEnrollments(data: {
 // ---------- GRADES (using subjectOfferingId) ----------
 export interface GradeEntry {
   id: string;
-  studentId: string;        // UUID
+  studentId: string; // UUID
   subjectOfferingId: string;
   grade: number;
   remarks?: string;
@@ -583,7 +598,9 @@ export async function fetchGrades(
   const offeringId =
     typeof offeringIdOrFilters === "string" ? offeringIdOrFilters : offeringIdOrFilters?.offeringId;
   const resolvedStudentId =
-    typeof offeringIdOrFilters === "string" ? studentId : offeringIdOrFilters?.studentId ?? studentId;
+    typeof offeringIdOrFilters === "string"
+      ? studentId
+      : (offeringIdOrFilters?.studentId ?? studentId);
 
   if (offeringId) params.set("subjectOfferingId", offeringId);
   if (resolvedStudentId) params.set("studentId", resolvedStudentId);
@@ -591,7 +608,7 @@ export async function fetchGrades(
 }
 
 export async function saveGrade(grade: {
-  studentId: string;          // human-readable studentId
+  studentId: string; // human-readable studentId
   subjectOfferingId: string;
   grade: number;
   remarks?: string;
@@ -616,7 +633,7 @@ export async function deleteGradeApi(studentId: string, offeringId: string): Pro
 // ---------- ATTENDANCE (using subjectOfferingId) ----------
 export interface AttendanceRecord {
   id: string;
-  studentId: string;        // UUID
+  studentId: string; // UUID
   subjectOfferingId: string;
   date: string;
   time?: string;
@@ -638,7 +655,7 @@ export async function fetchAttendanceRecords(filters?: {
 }
 
 export async function saveAttendance(attendance: {
-  studentId: string;      // human-readable
+  studentId: string; // human-readable
   subjectOfferingId: string;
   date: string;
   status: "present" | "absent" | "late" | "excused";
@@ -759,14 +776,20 @@ export async function fetchProgramsDetailed(): Promise<Program[]> {
   return request<Program[]>("/api/programs/detailed");
 }
 
-export async function createProgram(program: { name: string; description?: string }): Promise<Program> {
+export async function createProgram(program: {
+  name: string;
+  description?: string;
+}): Promise<Program> {
   return request<Program>("/api/programs", {
     method: "POST",
     body: JSON.stringify(program),
   });
 }
 
-export async function updateProgramApi(id: string, program: Partial<{ name: string; description: string }>): Promise<Program> {
+export async function updateProgramApi(
+  id: string,
+  program: Partial<{ name: string; description: string }>,
+): Promise<Program> {
   return request<Program>(`/api/programs/${id}`, {
     method: "PUT",
     body: JSON.stringify(program),
@@ -1092,7 +1115,26 @@ export interface EvaluationPeriodQuestion {
   categoryOrder: number;
   questionText: string;
   isRequired: number;
+  questionType: "rating";
+  ratingScale?: Array<{ value: number; label: string }>;
   displayOrder: number;
+}
+
+export interface EvaluationQuestionnaireCategory {
+  name: string;
+  description?: string;
+  questions: Array<{
+    questionText: string;
+    isRequired: boolean;
+    questionType: "rating";
+  }>;
+}
+
+export interface EvaluationQuestionnaire {
+  status?: "draft" | "active" | "closed";
+  version?: number;
+  categories: EvaluationQuestionnaireCategory[];
+  ratingScale: Array<{ value: number; label: string }>;
 }
 
 export interface EligibleFacultyEvaluation {
@@ -1229,8 +1271,62 @@ export async function saveEvaluationQuestion(
 
 export async function fetchEvaluationQuestionsForPeriod(
   periodId: string,
+  subjectOfferingId?: string,
 ): Promise<EvaluationPeriodQuestion[]> {
-  return request<EvaluationPeriodQuestion[]>(`/api/evaluations/periods/${encodeURIComponent(periodId)}/questions`);
+  const query = subjectOfferingId
+    ? `?subjectOfferingId=${encodeURIComponent(subjectOfferingId)}`
+    : "";
+  return request<EvaluationPeriodQuestion[]>(
+    `/api/evaluations/periods/${encodeURIComponent(periodId)}/questions${query}`,
+  );
+}
+
+export async function fetchDefaultFacultyEvaluationQuestionnaire(): Promise<EvaluationQuestionnaire> {
+  return request<EvaluationQuestionnaire>("/api/evaluations/questionnaire/default");
+}
+
+export async function fetchFacultyEvaluationQuestionnaire(
+  periodId: string,
+): Promise<EvaluationQuestionnaire> {
+  const response = await request<
+    Omit<EvaluationQuestionnaire, "categories"> & {
+      categories?: EvaluationQuestionnaireCategory[];
+      questions: EvaluationPeriodQuestion[];
+    }
+  >(`/api/evaluations/periods/${encodeURIComponent(periodId)}/questionnaire`);
+  if (!response.questions.length && !response.categories?.length && response.status === "draft") {
+    const defaults = await fetchDefaultFacultyEvaluationQuestionnaire();
+    return { ...defaults, status: response.status, version: response.version };
+  }
+  const categories = new Map<string, EvaluationQuestionnaireCategory>();
+  for (const question of response.questions) {
+    let category = categories.get(question.category);
+    if (!category) {
+      category = { name: question.category, questions: [] };
+      categories.set(question.category, category);
+    }
+    category.questions.push({
+      questionText: question.questionText,
+      isRequired: Boolean(question.isRequired),
+      questionType: question.questionType,
+    });
+  }
+  return {
+    status: response.status,
+    version: response.version,
+    categories: response.categories || [...categories.values()],
+    ratingScale: response.ratingScale,
+  };
+}
+
+export async function saveFacultyEvaluationQuestionnaire(
+  periodId: string,
+  questionnaire: Pick<EvaluationQuestionnaire, "categories" | "ratingScale">,
+): Promise<{ saved: true; questions: EvaluationPeriodQuestion[] }> {
+  return request(`/api/evaluations/periods/${encodeURIComponent(periodId)}/questionnaire`, {
+    method: "PUT",
+    body: JSON.stringify(questionnaire),
+  });
 }
 
 export async function fetchEligibleFacultyEvaluations(): Promise<EligibleFacultyEvaluation[]> {
@@ -1266,7 +1362,9 @@ export async function fetchSettings(): Promise<Record<string, string | boolean>>
   return request<Record<string, string | boolean>>("/api/settings");
 }
 
-export async function saveSettings(settings: Record<string, string | boolean>): Promise<{ success: true }> {
+export async function saveSettings(
+  settings: Record<string, string | boolean>,
+): Promise<{ success: true }> {
   return request<{ success: true }>("/api/settings", {
     method: "PUT",
     body: JSON.stringify(settings),
@@ -1288,7 +1386,7 @@ export async function fetchActivityLogs(): Promise<ActivityLogEntry[]> {
   const response = await request<ActivityLogEntry[] | { data?: ActivityLogEntry[] }>(
     "/api/activity-logs",
   );
-  return Array.isArray(response) ? response : response.data ?? [];
+  return Array.isArray(response) ? response : (response.data ?? []);
 }
 
 // ---------- CLEARANCE (stubs) ----------
@@ -1300,7 +1398,11 @@ export async function fetchClearances(): Promise<any[]> {
   return request<any[]>("/api/clearances");
 }
 
-export async function issueClearance(accountId: string, issuedBy: string, semester: string): Promise<any> {
+export async function issueClearance(
+  accountId: string,
+  issuedBy: string,
+  semester: string,
+): Promise<any> {
   return request<any>(`/api/clearances/issue`, {
     method: "POST",
     body: JSON.stringify({ accountId, issuedBy, semester }),

@@ -4,13 +4,13 @@ Faculty evaluations are handled entirely inside PIAT. The React portal uses auth
 
 ## Administration
 
-Open **Faculty Evaluation** from the admin dashboard to create a period for an academic year and its First or Second Semester. A period starts as a draft. Admins may edit drafts, activate them to accept submissions, or close them. Periods are unique per academic year and semester; closed periods are retained and cannot be changed.
+Open **Faculty Evaluation** from the admin dashboard to create an evaluation in four steps: enter its title, academic year, semester and dates; edit categories, questions, required flags and rating labels; preview the student questionnaire; then save as draft or publish and activate. New questionnaires start with the six standard categories and 18 questions. Questions can be added, edited, removed and reordered. The 1–5 labels and three optional comment fields are shown to students. Drafts are private and can be edited; publishing requires at least one required question and creates an immutable version. Periods are unique per academic year and semester; closed periods are retained and cannot be changed.
 
-Academic-year and semester choices come from PIAT's academic records. The database seeds the controlled 18-question questionnaire during initialization and snapshots it when a period is activated.
+Academic-year and semester choices come from PIAT's academic records. Questionnaire categories and ordered questions are stored with each period. The published version stores a serialized snapshot, rating scale, and question metadata. Existing participation, response, and answer tables remain in use.
 
 ## Student workflow
 
-Students see faculty members only for subject offerings in which their linked student record is currently enrolled. During an open period, they submit one required 1–5 rating for each of the 18 questions and may provide three optional comment fields. Submission eligibility, dates, enrollment, rating completeness, and duplicate prevention are checked by the API and SQLite constraints.
+Students see faculty only for subject offerings where they have an active enrollment and a faculty assignment for the evaluation period. Unfinished evaluations appear only while a published period is active and within its configured date range; previously completed evaluations remain visible as Completed. Selecting Evaluate loads that period's published questions and rating labels. Required questions must be answered; optional rating questions may be skipped. Students can also provide the three optional comment fields. Submission eligibility, dates, enrollment, published-version membership, rating validity, completeness, and duplicate prevention are checked by the API and SQLite constraints.
 
 ## Faculty reports and privacy
 
@@ -23,7 +23,10 @@ Student completion is stored separately from evaluation answers. The response ta
 | `GET /api/evaluations/periods` | Admin, registrar, student | List periods (students receive open periods only) |
 | `POST /api/evaluations/periods` | Admin | Create a draft period |
 | `PUT /api/evaluations/periods/:id` | Admin | Edit a draft, activate it, or close an active period |
-| `GET /api/evaluations/periods/:id/questions` | Admin, student | Read the period's controlled questionnaire |
+| `GET /api/evaluations/questionnaire/default` | Admin | Load the standard categories, questions, and rating scale |
+| `GET /api/evaluations/periods/:id/questionnaire` | Admin | Read draft editor data and saved questions |
+| `PUT /api/evaluations/periods/:id/questionnaire` | Admin | Save categories, ordered questions, required flags, and rating scale on a draft |
+| `GET /api/evaluations/periods/:id/questions` | Admin, eligible student | Read the period's saved or published questions |
 | `GET /api/evaluations/eligible` | Student | List the authenticated student's enrolled faculty-subject assignments and completion status |
 | `POST /api/evaluations/submit` | Student | Validate and submit one confidential evaluation |
 | `GET /api/evaluations/reports` | Admin, registrar | Read suppressed aggregated reports and completion statistics |
@@ -39,4 +42,4 @@ Run the isolated, synthetic-database evaluation tests with:
 node --test backend/tests/faculty-evaluations.test.mjs
 ```
 
-The test starts a temporary SQLite database and test accounts; it does not modify `database/piat.db`.
+The tests start temporary SQLite databases and synthetic accounts; they do not modify `database/piat.db`. They cover draft privacy, administrator-only editing, publication and snapshot immutability, student eligibility, required and optional answers, SQLite persistence, aggregated reporting, and the five-response reporting threshold.

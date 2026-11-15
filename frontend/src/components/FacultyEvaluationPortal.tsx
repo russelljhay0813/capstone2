@@ -4,16 +4,20 @@ import { useAuth } from "@/lib/auth-context";
 import {
   fetchEligibleFacultyEvaluations,
   fetchEvaluationQuestionsForPeriod,
+  fetchDefaultFacultyEvaluationQuestionnaire,
+  fetchFacultyEvaluationQuestionnaire,
   fetchFacultyEvaluationPeriods,
   fetchFacultyEvaluationReport,
   fetchMyFacultyEvaluationResults,
   fetchAcademicMetadata,
   createFacultyEvaluationPeriod,
+  saveFacultyEvaluationQuestionnaire,
   updateFacultyEvaluationPeriod,
   submitFacultyEvaluation,
   type AcademicMetadata,
   type EligibleFacultyEvaluation,
   type EvaluationPeriodQuestion,
+  type EvaluationQuestionnaireCategory,
   type FacultyEvaluationPeriod,
   type FacultyEvaluationReport,
   type FacultyEvaluationReportGroup,
@@ -161,11 +165,20 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
   });
   const [periodForm, setPeriodForm] = useState({
     id: null as string | null,
+    title: "",
     academicYearId: "",
     semesterId: "",
     startDate: "",
     endDate: "",
   });
+  const [builderStep, setBuilderStep] = useState<1 | 2 | 3 | 4>(1);
+  const [builderCategories, setBuilderCategories] = useState<EvaluationQuestionnaireCategory[]>([]);
+  const [ratingScale, setRatingScale] = useState(
+    ratingLabels.map((label, index) => ({
+      value: index + 1,
+      label,
+    })),
+  );
   const [periodFormOpen, setPeriodFormOpen] = useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -181,6 +194,11 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
     let current = true;
     setLoading(true);
     setError(null);
+    if (role === "student") {
+      setAssignments([]);
+      setSelectedAssignmentKey(null);
+      setQuestions([]);
+    }
     const load = async () => {
       try {
         if (role === "admin" || role === "registrar") {
@@ -213,7 +231,36 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
     return () => {
       current = false;
     };
-  }, [isHydrated, role, user?.role]);
+  }, [isHydrated, role, user?.id, user?.role, user?.studentId, user?.token]);
+
+  useEffect(() => {
+    if (!isHydrated || role !== "student" || user?.role !== "student") return;
+    let current = true;
+    const refresh = async () => {
+      try {
+        const data = await fetchEligibleFacultyEvaluations();
+        if (current) setAssignments(data);
+      } catch (loadError) {
+        if (current) {
+          setError(
+            loadError instanceof Error ? loadError.message : "Unable to refresh evaluation data.",
+          );
+        }
+      }
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const refreshInterval = window.setInterval(() => void refresh(), 60_000);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      current = false;
+      window.clearInterval(refreshInterval);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [isHydrated, role, user?.id, user?.role, user?.studentId, user?.token]);
 
   useEffect(() => {
     if (!isHydrated || user?.role !== role || (role !== "admin" && role !== "registrar")) return;
@@ -255,30 +302,79 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
   const selectedAssignment = assignments.find(
     (assignment) => assignmentKey(assignment) === selectedAssignmentKey,
   );
+  const questionnaireCanSubmit =
+    questions.length > 0 && questions.some((question) => question.isRequired);
   const resetPeriodForm = () => {
     setPeriodForm({
       id: null,
+      title: "",
       academicYearId: "",
       semesterId: "",
       startDate: "",
       endDate: "",
     });
+    setBuilderStep(1);
+    setBuilderCategories([]);
     setPeriodFormOpen(false);
   };
-  const editPeriod = (period: FacultyEvaluationPeriod) => {
+  const openNewBuilder = async () => {
+    setSuccess(null);
+    setError(null);
+    setPeriodForm({
+      id: null,
+      title: "",
+      academicYearId: "",
+      semesterId: "",
+      startDate: "",
+      endDate: "",
+    });
+    setBuilderStep(1);
+    setPeriodFormOpen(true);
+    setPeriodSaving(true);
+    try {
+      const defaults = await fetchDefaultFacultyEvaluationQuestionnaire();
+      setBuilderCategories(defaults.categories);
+      setRatingScale(defaults.ratingScale);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load the default questionnaire.",
+      );
+      setPeriodFormOpen(false);
+    } finally {
+      setPeriodSaving(false);
+    }
+  };
+  const editPeriod = async (period: FacultyEvaluationPeriod) => {
     setSuccess(null);
     setError(null);
     setPeriodForm({
       id: period.id,
+      title: period.title,
       academicYearId: period.academicYearId,
       semesterId: period.semesterId,
       startDate: period.startDate,
       endDate: period.endDate,
     });
     setPeriodFormOpen(true);
+    setBuilderStep(1);
+    setPeriodSaving(true);
+    try {
+      const questionnaire = await fetchFacultyEvaluationQuestionnaire(period.id);
+      setBuilderCategories(questionnaire.categories);
+      setRatingScale(questionnaire.ratingScale);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error ? loadError.message : "Unable to load the draft questionnaire.",
+      );
+    } finally {
+      setPeriodSaving(false);
+    }
   };
   const savePeriod = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (builderStep !== 1) return;
     const selectedYear = academicMetadata?.years.find(
       (year) => year.id === periodForm.academicYearId,
     );
@@ -289,30 +385,68 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
       setError("Choose an academic year and semester from the school records.");
       return;
     }
+    if (!periodForm.title.trim()) {
+      setError("Enter an evaluation title.");
+      return;
+    }
+    setBuilderStep(2);
+  };
+  const saveQuestionnaire = async (publish: boolean) => {
+    const selectedYear = academicMetadata?.years.find(
+      (year) => year.id === periodForm.academicYearId,
+    );
+    const selectedSemester = academicMetadata?.semesters.find(
+      (semester) => semester.id === periodForm.semesterId,
+    );
+    if (!selectedYear || !selectedSemester) {
+      setError("Choose an academic year and semester from the school records.");
+      setBuilderStep(1);
+      return;
+    }
+    if (
+      publish &&
+      !builderCategories.some((category) =>
+        category.questions.some((question) => question.isRequired && question.questionText.trim()),
+      )
+    ) {
+      setError("Add at least one required question before publishing.");
+      return;
+    }
     setPeriodSaving(true);
     setError(null);
     setSuccess(null);
     try {
       const input = {
-        title: `Faculty Evaluation - ${selectedYear.code} - ${selectedSemester.name}`,
+        title: periodForm.title.trim(),
         academicYearId: periodForm.academicYearId,
         semesterId: periodForm.semesterId,
         startDate: periodForm.startDate,
         endDate: periodForm.endDate,
       };
-      if (periodForm.id) {
-        await updateFacultyEvaluationPeriod(periodForm.id, input);
+      let evaluationId = periodForm.id;
+      if (evaluationId) {
+        await updateFacultyEvaluationPeriod(evaluationId, input);
       } else {
-        await createFacultyEvaluationPeriod(input);
+        const period = await createFacultyEvaluationPeriod(input);
+        evaluationId = period.id;
+        setPeriodForm((current) => ({ ...current, id: period.id }));
+      }
+      await saveFacultyEvaluationQuestionnaire(evaluationId, {
+        categories: builderCategories,
+        ratingScale,
+      });
+      if (publish) {
+        await updateFacultyEvaluationPeriod(evaluationId, { status: "active" });
       }
       setPeriods(await fetchFacultyEvaluationPeriods());
+      if (publish) setReport(await fetchFacultyEvaluationReport(filters));
       resetPeriodForm();
-      setSuccess(
-        periodForm.id ? "Evaluation period updated." : "Evaluation period created as a draft.",
-      );
+      setSuccess(publish ? "Evaluation published and activated." : "Evaluation saved as a draft.");
     } catch (saveError) {
       setError(
-        saveError instanceof Error ? saveError.message : "Unable to save the evaluation period.",
+        saveError instanceof Error
+          ? saveError.message
+          : "Unable to save the evaluation questionnaire.",
       );
     } finally {
       setPeriodSaving(false);
@@ -345,7 +479,10 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
     setSuccess(null);
     setQuestionsLoading(true);
     try {
-      const data = await fetchEvaluationQuestionsForPeriod(assignment.evaluationId);
+      const data = await fetchEvaluationQuestionsForPeriod(
+        assignment.evaluationId,
+        assignment.subjectOfferingId,
+      );
       setQuestions(data);
     } catch (loadError) {
       setError(
@@ -368,16 +505,18 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
         answers: Object.entries(answers).map(([questionId, rating]) => ({ questionId, rating })),
         ...comments,
       });
-      setAssignments((current) =>
-        current.map((assignment) =>
-          assignmentKey(assignment) === assignmentKey(selectedAssignment)
-            ? { ...assignment, completed: 1, canSubmit: false }
-            : assignment,
-        ),
-      );
       setSelectedAssignmentKey(null);
       setQuestions([]);
       setSuccess("Your evaluation was submitted successfully. Thank you for your feedback.");
+      try {
+        setAssignments(await fetchEligibleFacultyEvaluations());
+      } catch (refreshError) {
+        setError(
+          refreshError instanceof Error
+            ? `Evaluation submitted, but the list could not be refreshed: ${refreshError.message}`
+            : "Evaluation submitted, but the list could not be refreshed.",
+        );
+      }
     } catch (submitError) {
       setError(
         submitError instanceof Error ? submitError.message : "Unable to submit the evaluation.",
@@ -428,115 +567,497 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
                     student submissions.
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setSuccess(null);
-                    setError(null);
-                    setPeriodForm({
-                      id: null,
-                      academicYearId: "",
-                      semesterId: "",
-                      startDate: "",
-                      endDate: "",
-                    });
-                    setPeriodFormOpen(true);
-                  }}
-                >
-                  Create Evaluation Period
+                <Button type="button" onClick={() => void openNewBuilder()}>
+                  Create Evaluation Questionnaire
                 </Button>
               </div>
 
               {periodFormOpen && (
-                <form
-                  className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2"
-                  onSubmit={savePeriod}
-                >
-                  <label className="space-y-1 text-sm">
-                    <span>Academic Year</span>
-                    <select
-                      className={fieldClass}
-                      required
-                      value={periodForm.academicYearId}
-                      onChange={(event) =>
-                        setPeriodForm((current) => ({
-                          ...current,
-                          academicYearId: event.target.value,
-                          semesterId: "",
-                        }))
+                <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
+                  <div>
+                    <p className="text-sm font-semibold">
+                      Step {builderStep} of 4 ·{" "}
+                      {
+                        [
+                          "Evaluation Details",
+                          "Evaluation Questions",
+                          "Preview",
+                          "Save and Publish",
+                        ][builderStep - 1]
                       }
-                    >
-                      <option value="">Select academic year</option>
-                      {(academicMetadata?.years || []).map((year) => (
-                        <option key={year.id} value={year.id}>
-                          {year.code} · {year.name}
-                        </option>
+                    </p>
+                    <div className="mt-2 grid grid-cols-4 gap-1" aria-hidden="true">
+                      {[1, 2, 3, 4].map((step) => (
+                        <div
+                          key={step}
+                          className={`h-1 rounded ${step <= builderStep ? "bg-primary" : "bg-border"}`}
+                        />
                       ))}
-                    </select>
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span>Semester</span>
-                    <select
-                      className={fieldClass}
-                      required
-                      value={periodForm.semesterId}
-                      onChange={(event) =>
-                        setPeriodForm((current) => ({ ...current, semesterId: event.target.value }))
-                      }
-                    >
-                      <option value="">Select semester</option>
-                      {(academicMetadata?.semesters || [])
-                        .filter(
-                          (semester) =>
-                            semester.academicYearId === periodForm.academicYearId &&
-                            (semester.sequence === 1 || semester.sequence === 2),
-                        )
-                        .map((semester) => (
-                          <option key={semester.id} value={semester.id}>
-                            {semester.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span>Evaluation Start Date</span>
-                    <input
-                      className={fieldClass}
-                      type="date"
-                      required
-                      value={periodForm.startDate}
-                      onChange={(event) =>
-                        setPeriodForm((current) => ({ ...current, startDate: event.target.value }))
-                      }
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span>Evaluation End Date</span>
-                    <input
-                      className={fieldClass}
-                      type="date"
-                      min={periodForm.startDate || undefined}
-                      required
-                      value={periodForm.endDate}
-                      onChange={(event) =>
-                        setPeriodForm((current) => ({ ...current, endDate: event.target.value }))
-                      }
-                    />
-                  </label>
-                  <div className="flex gap-2 sm:col-span-2">
-                    <Button type="submit" disabled={periodSaving}>
-                      {periodSaving ? "Saving…" : periodForm.id ? "Save Changes" : "Create Draft"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={periodSaving}
-                      onClick={resetPeriodForm}
-                    >
-                      Cancel
-                    </Button>
+                    </div>
                   </div>
-                </form>
+
+                  {builderStep === 1 && (
+                    <form className="grid gap-3 sm:grid-cols-2" onSubmit={savePeriod}>
+                      <label className="space-y-1 text-sm sm:col-span-2">
+                        <span>Evaluation title</span>
+                        <input
+                          className={fieldClass}
+                          required
+                          maxLength={200}
+                          value={periodForm.title}
+                          onChange={(event) =>
+                            setPeriodForm((current) => ({ ...current, title: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Academic Year</span>
+                        <select
+                          className={fieldClass}
+                          required
+                          value={periodForm.academicYearId}
+                          onChange={(event) =>
+                            setPeriodForm((current) => ({
+                              ...current,
+                              academicYearId: event.target.value,
+                              semesterId: "",
+                            }))
+                          }
+                        >
+                          <option value="">Select academic year</option>
+                          {(academicMetadata?.years || []).map((year) => (
+                            <option key={year.id} value={year.id}>
+                              {year.code} · {year.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Semester</span>
+                        <select
+                          className={fieldClass}
+                          required
+                          value={periodForm.semesterId}
+                          onChange={(event) =>
+                            setPeriodForm((current) => ({
+                              ...current,
+                              semesterId: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Select semester</option>
+                          {(academicMetadata?.semesters || [])
+                            .filter(
+                              (semester) =>
+                                semester.academicYearId === periodForm.academicYearId &&
+                                (semester.sequence === 1 || semester.sequence === 2),
+                            )
+                            .map((semester) => (
+                              <option key={semester.id} value={semester.id}>
+                                {semester.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Evaluation Start Date</span>
+                        <input
+                          className={fieldClass}
+                          type="date"
+                          required
+                          value={periodForm.startDate}
+                          onChange={(event) =>
+                            setPeriodForm((current) => ({
+                              ...current,
+                              startDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span>Evaluation End Date</span>
+                        <input
+                          className={fieldClass}
+                          type="date"
+                          min={periodForm.startDate || undefined}
+                          required
+                          value={periodForm.endDate}
+                          onChange={(event) =>
+                            setPeriodForm((current) => ({
+                              ...current,
+                              endDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <div className="flex gap-2 sm:col-span-2">
+                        <Button type="submit">Continue to questions</Button>
+                        <Button type="button" variant="outline" onClick={resetPeriodForm}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </form>
+                  )}
+
+                  {builderStep === 2 && (
+                    <div className="space-y-4">
+                      <section className="space-y-3">
+                        <h3 className="text-sm font-semibold">Rating scale</h3>
+                        <div className="grid gap-2 sm:grid-cols-5">
+                          {ratingScale.map((option, index) => (
+                            <label key={option.value} className="space-y-1 text-xs">
+                              <span>Rating {option.value}</span>
+                              <input
+                                className={fieldClass}
+                                maxLength={60}
+                                required
+                                value={option.label}
+                                onChange={(event) =>
+                                  setRatingScale((current) =>
+                                    current.map((item, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...item, label: event.target.value }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      </section>
+                      {builderCategories.map((category, categoryIndex) => (
+                        <section
+                          key={`${category.name}-${categoryIndex}`}
+                          className="space-y-3 rounded-lg border bg-background p-3"
+                        >
+                          <div className="flex gap-2">
+                            <input
+                              className={fieldClass}
+                              aria-label="Category name"
+                              maxLength={120}
+                              required
+                              value={category.name}
+                              onChange={(event) =>
+                                setBuilderCategories((current) =>
+                                  current.map((item, index) =>
+                                    index === categoryIndex
+                                      ? { ...item, name: event.target.value }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() =>
+                                setBuilderCategories((current) =>
+                                  current.filter((_, index) => index !== categoryIndex),
+                                )
+                              }
+                            >
+                              Delete category
+                            </Button>
+                          </div>
+                          {category.questions.map((question, questionIndex) => (
+                            <div
+                              key={`${question.questionText}-${questionIndex}`}
+                              className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_auto]"
+                            >
+                              <input
+                                className={fieldClass}
+                                aria-label={`Question in ${category.name}`}
+                                maxLength={1000}
+                                required
+                                value={question.questionText}
+                                onChange={(event) =>
+                                  setBuilderCategories((current) =>
+                                    current.map((item, index) =>
+                                      index === categoryIndex
+                                        ? {
+                                            ...item,
+                                            questions: item.questions.map((entry, entryIndex) =>
+                                              entryIndex === questionIndex
+                                                ? { ...entry, questionText: event.target.value }
+                                                : entry,
+                                            ),
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              />
+                              <div className="flex flex-wrap items-center gap-2">
+                                <label className="flex items-center gap-1 text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={question.isRequired}
+                                    onChange={(event) =>
+                                      setBuilderCategories((current) =>
+                                        current.map((item, index) =>
+                                          index === categoryIndex
+                                            ? {
+                                                ...item,
+                                                questions: item.questions.map(
+                                                  (entry, entryIndex) =>
+                                                    entryIndex === questionIndex
+                                                      ? {
+                                                          ...entry,
+                                                          isRequired: event.target.checked,
+                                                        }
+                                                      : entry,
+                                                ),
+                                              }
+                                            : item,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                  Required
+                                </label>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={questionIndex === 0}
+                                  aria-label="Move question up"
+                                  onClick={() =>
+                                    setBuilderCategories((current) =>
+                                      current.map((item, index) => {
+                                        if (index !== categoryIndex) return item;
+                                        const questions = [...item.questions];
+                                        [questions[questionIndex - 1], questions[questionIndex]] = [
+                                          questions[questionIndex],
+                                          questions[questionIndex - 1],
+                                        ];
+                                        return { ...item, questions };
+                                      }),
+                                    )
+                                  }
+                                >
+                                  Up
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={questionIndex === category.questions.length - 1}
+                                  aria-label="Move question down"
+                                  onClick={() =>
+                                    setBuilderCategories((current) =>
+                                      current.map((item, index) => {
+                                        if (index !== categoryIndex) return item;
+                                        const questions = [...item.questions];
+                                        [questions[questionIndex], questions[questionIndex + 1]] = [
+                                          questions[questionIndex + 1],
+                                          questions[questionIndex],
+                                        ];
+                                        return { ...item, questions };
+                                      }),
+                                    )
+                                  }
+                                >
+                                  Down
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setBuilderCategories((current) =>
+                                      current.map((item, index) =>
+                                        index === categoryIndex
+                                          ? {
+                                              ...item,
+                                              questions: item.questions.filter(
+                                                (_, entryIndex) => entryIndex !== questionIndex,
+                                              ),
+                                            }
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() =>
+                              setBuilderCategories((current) =>
+                                current.map((item, index) =>
+                                  index === categoryIndex
+                                    ? {
+                                        ...item,
+                                        questions: [
+                                          ...item.questions,
+                                          {
+                                            questionText: "",
+                                            isRequired: true,
+                                            questionType: "rating",
+                                          },
+                                        ],
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                          >
+                            Add question
+                          </Button>
+                        </section>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setBuilderCategories((current) => [
+                            ...current,
+                            { name: "", questions: [] },
+                          ])
+                        }
+                      >
+                        Add category
+                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" onClick={() => setBuilderStep(1)}>
+                          Back
+                        </Button>
+                        <Button type="button" onClick={() => setBuilderStep(3)}>
+                          Preview questionnaire
+                        </Button>
+                        <Button type="button" variant="outline" onClick={resetPeriodForm}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {builderStep === 3 && (
+                    <div className="space-y-4 rounded-lg border bg-background p-4">
+                      <div>
+                        <h3 className="font-semibold">
+                          {periodForm.title || "Evaluation questionnaire"}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          {
+                            academicMetadata?.years.find(
+                              (year) => year.id === periodForm.academicYearId,
+                            )?.code
+                          }
+                          {" · "}
+                          {
+                            academicMetadata?.semesters.find(
+                              (semester) => semester.id === periodForm.semesterId,
+                            )?.name
+                          }
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {ratingScale.map((item) => `${item.value} ${item.label}`).join(" · ")}
+                      </p>
+                      {builderCategories.map((category, categoryIndex) => (
+                        <section key={`${category.name}-${categoryIndex}`} className="space-y-2">
+                          <h4 className="font-medium">{category.name || "Untitled category"}</h4>
+                          {category.questions.map((question, questionIndex) => (
+                            <div
+                              key={`${question.questionText}-${questionIndex}`}
+                              className="rounded border p-3"
+                            >
+                              <p className="text-sm">
+                                {question.questionText || "Untitled question"}
+                                {question.isRequired ? " *" : " (optional)"}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                                {ratingScale.map((item) => (
+                                  <span key={item.value}>
+                                    ◯ {item.value} · {item.label}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </section>
+                      ))}
+                      {["Faculty strengths", "Areas for improvement", "Additional comments"].map(
+                        (label) => (
+                          <label key={label} className="block space-y-1 text-sm">
+                            <span>{label} (optional)</span>
+                            <textarea
+                              className={fieldClass}
+                              rows={2}
+                              disabled
+                              placeholder="Student response"
+                            />
+                          </label>
+                        ),
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" onClick={() => setBuilderStep(2)}>
+                          Back to questions
+                        </Button>
+                        <Button type="button" onClick={() => setBuilderStep(4)}>
+                          Continue to save and publish
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {builderStep === 4 && (
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Saving as a draft keeps the questionnaire private. Publishing creates an
+                        immutable version and opens it to eligible enrolled students during the
+                        selected dates.
+                      </p>
+                      <p className="text-sm">
+                        {builderCategories.reduce(
+                          (total, category) => total + category.questions.length,
+                          0,
+                        )}{" "}
+                        questions ·{" "}
+                        {builderCategories.reduce(
+                          (total, category) =>
+                            total +
+                            category.questions.filter((question) => question.isRequired).length,
+                          0,
+                        )}{" "}
+                        required
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" onClick={() => setBuilderStep(3)}>
+                          Back to preview
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={periodSaving}
+                          onClick={() => void saveQuestionnaire(false)}
+                        >
+                          {periodSaving ? "Saving…" : "Save as Draft"}
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={periodSaving}
+                          onClick={() => void saveQuestionnaire(true)}
+                        >
+                          {periodSaving ? "Publishing…" : "Publish and Activate"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={periodSaving}
+                          onClick={resetPeriodForm}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {periods.length ? (
@@ -675,11 +1196,7 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
                       {assignment.semester}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {assignment.completed
-                        ? "Completed"
-                        : assignment.canSubmit
-                          ? "Pending"
-                          : "Pending · Evaluation period is closed"}
+                      {assignment.completed ? "Completed" : "Pending"}
                     </p>
                   </div>
                   {assignment.canSubmit && (
@@ -696,7 +1213,7 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              There are no faculty evaluations available for your enrollments.
+              No faculty evaluations are currently available for your enrolled subjects.
             </p>
           )}
 
@@ -714,16 +1231,12 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
                 <p className="text-sm text-muted-foreground">Loading evaluation questions…</p>
               ) : (
                 <>
-                  {questions.length !== 18 ? (
+                  {!questionnaireCanSubmit ? (
                     <p className="text-sm text-destructive" role="alert">
-                      The questionnaire is unavailable because it does not contain all 18 required
-                      questions.
+                      The questionnaire is unavailable because it has no required questions.
                     </p>
                   ) : (
                     <>
-                      <p className="text-xs text-muted-foreground">
-                        1 Poor · 2 Fair · 3 Satisfactory · 4 Very Satisfactory · 5 Excellent
-                      </p>
                       {[...new Set(questions.map((question) => question.category))].map(
                         (category) => (
                           <section key={category} className="space-y-2">
@@ -736,11 +1249,17 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
                                   className="space-y-2 rounded-lg border p-3"
                                 >
                                   <legend className="px-1 text-sm font-medium">
-                                    {question.questionText} *
+                                    {question.questionText}
+                                    {question.isRequired ? " *" : " (optional)"}
                                   </legend>
                                   <div className="flex flex-wrap gap-3">
-                                    {ratingLabels.map((label, index) => {
-                                      const rating = index + 1;
+                                    {(
+                                      question.ratingScale ||
+                                      ratingLabels.map((label, index) => ({
+                                        value: index + 1,
+                                        label,
+                                      }))
+                                    ).map(({ value: rating, label }) => {
                                       return (
                                         <label
                                           key={rating}
@@ -750,7 +1269,7 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
                                             type="radio"
                                             name={question.questionId}
                                             value={rating}
-                                            required
+                                            required={Boolean(question.isRequired)}
                                             checked={answers[question.questionId] === rating}
                                             onChange={() =>
                                               setAnswers((current) => ({
@@ -792,7 +1311,7 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
                     </>
                   )}
                   <div className="flex gap-2">
-                    <Button type="submit" disabled={submitting || questions.length !== 18}>
+                    <Button type="submit" disabled={submitting || !questionnaireCanSubmit}>
                       {submitting ? "Submitting…" : "Submit evaluation"}
                     </Button>
                     <Button
