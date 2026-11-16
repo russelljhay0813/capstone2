@@ -22,6 +22,7 @@ dist-ssr
 test-results/
 playwright-report/
 .output
+.vercel/
 .vinxi
 .tanstack/**
 .nitro
