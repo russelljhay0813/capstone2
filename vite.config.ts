@@ -66,6 +66,7 @@ const vercelConfig: UserConfig = {
     }),
     tanstackStart(tanstackStartOptions),
     nitro({
+      preset: "vercel", 
       output: {
         dir: path.resolve(__dirname, ".vercel", "output"),
       },
