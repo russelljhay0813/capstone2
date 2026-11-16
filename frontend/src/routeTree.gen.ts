@@ -9,62 +9,57 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as RegisterRouteImport } from './routes/register'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as DashboardStudentRouteImport } from './routes/dashboard/student'
-import { Route as DashboardRegistrarRouteImport } from './routes/dashboard/registrar'
-import { Route as DashboardFacultyRouteImport } from './routes/dashboard/faculty'
-import { Route as DashboardAnnouncementsRouteImport } from './routes/dashboard/announcements'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as DashboardAdminRouteImport } from './routes/dashboard/admin'
-import { Route as DashboardStudentIndexRouteImport } from './routes/dashboard/student.index'
-import { Route as DashboardRegistrarIndexRouteImport } from './routes/dashboard/registrar.index'
-import { Route as DashboardFacultyIndexRouteImport } from './routes/dashboard/faculty.index'
+import { Route as DashboardAnnouncementsRouteImport } from './routes/dashboard/announcements'
+import { Route as DashboardFacultyRouteImport } from './routes/dashboard/faculty'
+import { Route as DashboardRegistrarRouteImport } from './routes/dashboard/registrar'
+import { Route as DashboardStudentRouteImport } from './routes/dashboard/student'
 import { Route as DashboardAdminIndexRouteImport } from './routes/dashboard/admin.index'
-import { Route as DashboardStudentScheduleRouteImport } from './routes/dashboard/student.schedule'
-import { Route as DashboardStudentProfileRouteImport } from './routes/dashboard/student.profile'
-import { Route as DashboardStudentGradesRouteImport } from './routes/dashboard/student.grades'
-import { Route as DashboardStudentFacultyEvaluationRouteImport } from './routes/dashboard/student.faculty-evaluation'
-import { Route as DashboardStudentEnrollmentRouteImport } from './routes/dashboard/student.enrollment'
-import { Route as DashboardStudentAttendanceRouteImport } from './routes/dashboard/student.attendance'
-import { Route as DashboardRegistrarTranscriptsRouteImport } from './routes/dashboard/registrar.transcripts'
-import { Route as DashboardRegistrarSubjectsRouteImport } from './routes/dashboard/registrar.subjects'
-import { Route as DashboardRegistrarStudentsRouteImport } from './routes/dashboard/registrar.students'
-import { Route as DashboardRegistrarReportsRouteImport } from './routes/dashboard/registrar.reports'
-import { Route as DashboardRegistrarRegistrationsRouteImport } from './routes/dashboard/registrar.registrations'
-import { Route as DashboardRegistrarReenrollmentRouteImport } from './routes/dashboard/registrar.reenrollment'
-import { Route as DashboardRegistrarRecordsRouteImport } from './routes/dashboard/registrar.records'
-import { Route as DashboardRegistrarProfileRouteImport } from './routes/dashboard/registrar.profile'
-import { Route as DashboardRegistrarFacultyRouteImport } from './routes/dashboard/registrar.faculty'
-import { Route as DashboardRegistrarEvaluationsRouteImport } from './routes/dashboard/registrar.evaluations'
-import { Route as DashboardRegistrarEnrollmentRouteImport } from './routes/dashboard/registrar.enrollment'
-import { Route as DashboardRegistrarCurriculumRouteImport } from './routes/dashboard/registrar.curriculum'
-import { Route as DashboardRegistrarAnnouncementsRouteImport } from './routes/dashboard/registrar.announcements'
-import { Route as DashboardFacultySubjectsRouteImport } from './routes/dashboard/faculty.subjects'
-import { Route as DashboardFacultySubjectDetailsRouteImport } from './routes/dashboard/faculty.subject-details'
-import { Route as DashboardFacultyProfileRouteImport } from './routes/dashboard/faculty.profile'
-import { Route as DashboardFacultyPerformanceRouteImport } from './routes/dashboard/faculty.performance'
-import { Route as DashboardFacultyGradesRouteImport } from './routes/dashboard/faculty.grades'
-import { Route as DashboardFacultyEvaluationsRouteImport } from './routes/dashboard/faculty.evaluations'
-import { Route as DashboardFacultyClassesRouteImport } from './routes/dashboard/faculty.classes'
-import { Route as DashboardFacultyAttendanceRouteImport } from './routes/dashboard/faculty.attendance'
-import { Route as DashboardFacultyAnnouncementsRouteImport } from './routes/dashboard/faculty.announcements'
-import { Route as DashboardAdminUsersRouteImport } from './routes/dashboard/admin.users'
-import { Route as DashboardAdminSettingsRouteImport } from './routes/dashboard/admin.settings'
-import { Route as DashboardAdminSecurityRouteImport } from './routes/dashboard/admin.security'
-import { Route as DashboardAdminFacultyEvaluationsRouteImport } from './routes/dashboard/admin.faculty-evaluations'
-import { Route as DashboardAdminAnnouncementsRouteImport } from './routes/dashboard/admin.announcements'
 import { Route as DashboardAdminAnalyticsRouteImport } from './routes/dashboard/admin.analytics'
+import { Route as DashboardAdminAnnouncementsRouteImport } from './routes/dashboard/admin.announcements'
+import { Route as DashboardAdminFacultyEvaluationsRouteImport } from './routes/dashboard/admin.faculty-evaluations'
+import { Route as DashboardAdminSecurityRouteImport } from './routes/dashboard/admin.security'
+import { Route as DashboardAdminSettingsRouteImport } from './routes/dashboard/admin.settings'
+import { Route as DashboardAdminUsersRouteImport } from './routes/dashboard/admin.users'
+import { Route as DashboardFacultyIndexRouteImport } from './routes/dashboard/faculty.index'
+import { Route as DashboardFacultyAnnouncementsRouteImport } from './routes/dashboard/faculty.announcements'
+import { Route as DashboardFacultyAttendanceRouteImport } from './routes/dashboard/faculty.attendance'
+import { Route as DashboardFacultyClassesRouteImport } from './routes/dashboard/faculty.classes'
+import { Route as DashboardFacultyEvaluationsRouteImport } from './routes/dashboard/faculty.evaluations'
+import { Route as DashboardFacultyGradesRouteImport } from './routes/dashboard/faculty.grades'
+import { Route as DashboardFacultyPerformanceRouteImport } from './routes/dashboard/faculty.performance'
+import { Route as DashboardFacultyProfileRouteImport } from './routes/dashboard/faculty.profile'
+import { Route as DashboardFacultySubjectDetailsRouteImport } from './routes/dashboard/faculty.subject-details'
+import { Route as DashboardFacultySubjectsRouteImport } from './routes/dashboard/faculty.subjects'
+import { Route as DashboardRegistrarIndexRouteImport } from './routes/dashboard/registrar.index'
+import { Route as DashboardRegistrarAnnouncementsRouteImport } from './routes/dashboard/registrar.announcements'
+import { Route as DashboardRegistrarCurriculumRouteImport } from './routes/dashboard/registrar.curriculum'
+import { Route as DashboardRegistrarEnrollmentRouteImport } from './routes/dashboard/registrar.enrollment'
+import { Route as DashboardRegistrarEvaluationsRouteImport } from './routes/dashboard/registrar.evaluations'
+import { Route as DashboardRegistrarFacultyRouteImport } from './routes/dashboard/registrar.faculty'
+import { Route as DashboardRegistrarProfileRouteImport } from './routes/dashboard/registrar.profile'
+import { Route as DashboardRegistrarRecordsRouteImport } from './routes/dashboard/registrar.records'
+import { Route as DashboardRegistrarReenrollmentRouteImport } from './routes/dashboard/registrar.reenrollment'
+import { Route as DashboardRegistrarRegistrationsRouteImport } from './routes/dashboard/registrar.registrations'
+import { Route as DashboardRegistrarReportsRouteImport } from './routes/dashboard/registrar.reports'
+import { Route as DashboardRegistrarStudentsRouteImport } from './routes/dashboard/registrar.students'
+import { Route as DashboardRegistrarSubjectsRouteImport } from './routes/dashboard/registrar.subjects'
+import { Route as DashboardRegistrarTranscriptsRouteImport } from './routes/dashboard/registrar.transcripts'
+import { Route as DashboardStudentIndexRouteImport } from './routes/dashboard/student.index'
+import { Route as DashboardStudentAttendanceRouteImport } from './routes/dashboard/student.attendance'
+import { Route as DashboardStudentEnrollmentRouteImport } from './routes/dashboard/student.enrollment'
+import { Route as DashboardStudentFacultyEvaluationRouteImport } from './routes/dashboard/student.faculty-evaluation'
+import { Route as DashboardStudentGradesRouteImport } from './routes/dashboard/student.grades'
+import { Route as DashboardStudentProfileRouteImport } from './routes/dashboard/student.profile'
+import { Route as DashboardStudentScheduleRouteImport } from './routes/dashboard/student.schedule'
 
-const RegisterRoute = RegisterRouteImport.update({
-  id: '/register',
-  path: '/register',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -72,24 +67,19 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DashboardStudentRoute = DashboardStudentRouteImport.update({
-  id: '/student',
-  path: '/student',
-  getParentRoute: () => DashboardRoute,
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const DashboardRegistrarRoute = DashboardRegistrarRouteImport.update({
-  id: '/registrar',
-  path: '/registrar',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardFacultyRoute = DashboardFacultyRouteImport.update({
-  id: '/faculty',
-  path: '/faculty',
+const DashboardAdminRoute = DashboardAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardAnnouncementsRoute = DashboardAnnouncementsRouteImport.update({
@@ -97,169 +87,78 @@ const DashboardAnnouncementsRoute = DashboardAnnouncementsRouteImport.update({
   path: '/announcements',
   getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardAdminRoute = DashboardAdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+const DashboardFacultyRoute = DashboardFacultyRouteImport.update({
+  id: '/faculty',
+  path: '/faculty',
   getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardStudentIndexRoute = DashboardStudentIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => DashboardStudentRoute,
+const DashboardRegistrarRoute = DashboardRegistrarRouteImport.update({
+  id: '/registrar',
+  path: '/registrar',
+  getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardRegistrarIndexRoute = DashboardRegistrarIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => DashboardRegistrarRoute,
-} as any)
-const DashboardFacultyIndexRoute = DashboardFacultyIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => DashboardFacultyRoute,
+const DashboardStudentRoute = DashboardStudentRouteImport.update({
+  id: '/student',
+  path: '/student',
+  getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardAdminIndexRoute = DashboardAdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => DashboardAdminRoute,
 } as any)
-const DashboardStudentScheduleRoute =
-  DashboardStudentScheduleRouteImport.update({
-    id: '/schedule',
-    path: '/schedule',
-    getParentRoute: () => DashboardStudentRoute,
-  } as any)
-const DashboardStudentProfileRoute = DashboardStudentProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => DashboardStudentRoute,
+const DashboardAdminAnalyticsRoute = DashboardAdminAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => DashboardAdminRoute,
 } as any)
-const DashboardStudentGradesRoute = DashboardStudentGradesRouteImport.update({
-  id: '/grades',
-  path: '/grades',
-  getParentRoute: () => DashboardStudentRoute,
-} as any)
-const DashboardStudentFacultyEvaluationRoute =
-  DashboardStudentFacultyEvaluationRouteImport.update({
-    id: '/faculty-evaluation',
-    path: '/faculty-evaluation',
-    getParentRoute: () => DashboardStudentRoute,
-  } as any)
-const DashboardStudentEnrollmentRoute =
-  DashboardStudentEnrollmentRouteImport.update({
-    id: '/enrollment',
-    path: '/enrollment',
-    getParentRoute: () => DashboardStudentRoute,
-  } as any)
-const DashboardStudentAttendanceRoute =
-  DashboardStudentAttendanceRouteImport.update({
-    id: '/attendance',
-    path: '/attendance',
-    getParentRoute: () => DashboardStudentRoute,
-  } as any)
-const DashboardRegistrarTranscriptsRoute =
-  DashboardRegistrarTranscriptsRouteImport.update({
-    id: '/transcripts',
-    path: '/transcripts',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarSubjectsRoute =
-  DashboardRegistrarSubjectsRouteImport.update({
-    id: '/subjects',
-    path: '/subjects',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarStudentsRoute =
-  DashboardRegistrarStudentsRouteImport.update({
-    id: '/students',
-    path: '/students',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarReportsRoute =
-  DashboardRegistrarReportsRouteImport.update({
-    id: '/reports',
-    path: '/reports',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarRegistrationsRoute =
-  DashboardRegistrarRegistrationsRouteImport.update({
-    id: '/registrations',
-    path: '/registrations',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarReenrollmentRoute =
-  DashboardRegistrarReenrollmentRouteImport.update({
-    id: '/reenrollment',
-    path: '/reenrollment',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarRecordsRoute =
-  DashboardRegistrarRecordsRouteImport.update({
-    id: '/records',
-    path: '/records',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarProfileRoute =
-  DashboardRegistrarProfileRouteImport.update({
-    id: '/profile',
-    path: '/profile',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarFacultyRoute =
-  DashboardRegistrarFacultyRouteImport.update({
-    id: '/faculty',
-    path: '/faculty',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarEvaluationsRoute =
-  DashboardRegistrarEvaluationsRouteImport.update({
-    id: '/evaluations',
-    path: '/evaluations',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarEnrollmentRoute =
-  DashboardRegistrarEnrollmentRouteImport.update({
-    id: '/enrollment',
-    path: '/enrollment',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarCurriculumRoute =
-  DashboardRegistrarCurriculumRouteImport.update({
-    id: '/curriculum',
-    path: '/curriculum',
-    getParentRoute: () => DashboardRegistrarRoute,
-  } as any)
-const DashboardRegistrarAnnouncementsRoute =
-  DashboardRegistrarAnnouncementsRouteImport.update({
+const DashboardAdminAnnouncementsRoute =
+  DashboardAdminAnnouncementsRouteImport.update({
     id: '/announcements',
     path: '/announcements',
-    getParentRoute: () => DashboardRegistrarRoute,
+    getParentRoute: () => DashboardAdminRoute,
   } as any)
-const DashboardFacultySubjectsRoute =
-  DashboardFacultySubjectsRouteImport.update({
-    id: '/subjects',
-    path: '/subjects',
-    getParentRoute: () => DashboardFacultyRoute,
+const DashboardAdminFacultyEvaluationsRoute =
+  DashboardAdminFacultyEvaluationsRouteImport.update({
+    id: '/faculty-evaluations',
+    path: '/faculty-evaluations',
+    getParentRoute: () => DashboardAdminRoute,
   } as any)
-const DashboardFacultySubjectDetailsRoute =
-  DashboardFacultySubjectDetailsRouteImport.update({
-    id: '/subject-details',
-    path: '/subject-details',
-    getParentRoute: () => DashboardFacultyRoute,
-  } as any)
-const DashboardFacultyProfileRoute = DashboardFacultyProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
+const DashboardAdminSecurityRoute = DashboardAdminSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => DashboardAdminRoute,
+} as any)
+const DashboardAdminSettingsRoute = DashboardAdminSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => DashboardAdminRoute,
+} as any)
+const DashboardAdminUsersRoute = DashboardAdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => DashboardAdminRoute,
+} as any)
+const DashboardFacultyIndexRoute = DashboardFacultyIndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => DashboardFacultyRoute,
 } as any)
-const DashboardFacultyPerformanceRoute =
-  DashboardFacultyPerformanceRouteImport.update({
-    id: '/performance',
-    path: '/performance',
+const DashboardFacultyAnnouncementsRoute =
+  DashboardFacultyAnnouncementsRouteImport.update({
+    id: '/announcements',
+    path: '/announcements',
     getParentRoute: () => DashboardFacultyRoute,
   } as any)
-const DashboardFacultyGradesRoute = DashboardFacultyGradesRouteImport.update({
-  id: '/grades',
-  path: '/grades',
+const DashboardFacultyAttendanceRoute =
+  DashboardFacultyAttendanceRouteImport.update({
+    id: '/attendance',
+    path: '/attendance',
+    getParentRoute: () => DashboardFacultyRoute,
+  } as any)
+const DashboardFacultyClassesRoute = DashboardFacultyClassesRouteImport.update({
+  id: '/classes',
+  path: '/classes',
   getParentRoute: () => DashboardFacultyRoute,
 } as any)
 const DashboardFacultyEvaluationsRoute =
@@ -268,55 +167,156 @@ const DashboardFacultyEvaluationsRoute =
     path: '/evaluations',
     getParentRoute: () => DashboardFacultyRoute,
   } as any)
-const DashboardFacultyClassesRoute = DashboardFacultyClassesRouteImport.update({
-  id: '/classes',
-  path: '/classes',
+const DashboardFacultyGradesRoute = DashboardFacultyGradesRouteImport.update({
+  id: '/grades',
+  path: '/grades',
   getParentRoute: () => DashboardFacultyRoute,
 } as any)
-const DashboardFacultyAttendanceRoute =
-  DashboardFacultyAttendanceRouteImport.update({
+const DashboardFacultyPerformanceRoute =
+  DashboardFacultyPerformanceRouteImport.update({
+    id: '/performance',
+    path: '/performance',
+    getParentRoute: () => DashboardFacultyRoute,
+  } as any)
+const DashboardFacultyProfileRoute = DashboardFacultyProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => DashboardFacultyRoute,
+} as any)
+const DashboardFacultySubjectDetailsRoute =
+  DashboardFacultySubjectDetailsRouteImport.update({
+    id: '/subject-details',
+    path: '/subject-details',
+    getParentRoute: () => DashboardFacultyRoute,
+  } as any)
+const DashboardFacultySubjectsRoute =
+  DashboardFacultySubjectsRouteImport.update({
+    id: '/subjects',
+    path: '/subjects',
+    getParentRoute: () => DashboardFacultyRoute,
+  } as any)
+const DashboardRegistrarIndexRoute = DashboardRegistrarIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardRegistrarRoute,
+} as any)
+const DashboardRegistrarAnnouncementsRoute =
+  DashboardRegistrarAnnouncementsRouteImport.update({
+    id: '/announcements',
+    path: '/announcements',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarCurriculumRoute =
+  DashboardRegistrarCurriculumRouteImport.update({
+    id: '/curriculum',
+    path: '/curriculum',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarEnrollmentRoute =
+  DashboardRegistrarEnrollmentRouteImport.update({
+    id: '/enrollment',
+    path: '/enrollment',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarEvaluationsRoute =
+  DashboardRegistrarEvaluationsRouteImport.update({
+    id: '/evaluations',
+    path: '/evaluations',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarFacultyRoute =
+  DashboardRegistrarFacultyRouteImport.update({
+    id: '/faculty',
+    path: '/faculty',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarProfileRoute =
+  DashboardRegistrarProfileRouteImport.update({
+    id: '/profile',
+    path: '/profile',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarRecordsRoute =
+  DashboardRegistrarRecordsRouteImport.update({
+    id: '/records',
+    path: '/records',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarReenrollmentRoute =
+  DashboardRegistrarReenrollmentRouteImport.update({
+    id: '/reenrollment',
+    path: '/reenrollment',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarRegistrationsRoute =
+  DashboardRegistrarRegistrationsRouteImport.update({
+    id: '/registrations',
+    path: '/registrations',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarReportsRoute =
+  DashboardRegistrarReportsRouteImport.update({
+    id: '/reports',
+    path: '/reports',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarStudentsRoute =
+  DashboardRegistrarStudentsRouteImport.update({
+    id: '/students',
+    path: '/students',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarSubjectsRoute =
+  DashboardRegistrarSubjectsRouteImport.update({
+    id: '/subjects',
+    path: '/subjects',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardRegistrarTranscriptsRoute =
+  DashboardRegistrarTranscriptsRouteImport.update({
+    id: '/transcripts',
+    path: '/transcripts',
+    getParentRoute: () => DashboardRegistrarRoute,
+  } as any)
+const DashboardStudentIndexRoute = DashboardStudentIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardStudentRoute,
+} as any)
+const DashboardStudentAttendanceRoute =
+  DashboardStudentAttendanceRouteImport.update({
     id: '/attendance',
     path: '/attendance',
-    getParentRoute: () => DashboardFacultyRoute,
+    getParentRoute: () => DashboardStudentRoute,
   } as any)
-const DashboardFacultyAnnouncementsRoute =
-  DashboardFacultyAnnouncementsRouteImport.update({
-    id: '/announcements',
-    path: '/announcements',
-    getParentRoute: () => DashboardFacultyRoute,
+const DashboardStudentEnrollmentRoute =
+  DashboardStudentEnrollmentRouteImport.update({
+    id: '/enrollment',
+    path: '/enrollment',
+    getParentRoute: () => DashboardStudentRoute,
   } as any)
-const DashboardAdminUsersRoute = DashboardAdminUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => DashboardAdminRoute,
-} as any)
-const DashboardAdminSettingsRoute = DashboardAdminSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => DashboardAdminRoute,
-} as any)
-const DashboardAdminSecurityRoute = DashboardAdminSecurityRouteImport.update({
-  id: '/security',
-  path: '/security',
-  getParentRoute: () => DashboardAdminRoute,
-} as any)
-const DashboardAdminFacultyEvaluationsRoute =
-  DashboardAdminFacultyEvaluationsRouteImport.update({
-    id: '/faculty-evaluations',
-    path: '/faculty-evaluations',
-    getParentRoute: () => DashboardAdminRoute,
+const DashboardStudentFacultyEvaluationRoute =
+  DashboardStudentFacultyEvaluationRouteImport.update({
+    id: '/faculty-evaluation',
+    path: '/faculty-evaluation',
+    getParentRoute: () => DashboardStudentRoute,
   } as any)
-const DashboardAdminAnnouncementsRoute =
-  DashboardAdminAnnouncementsRouteImport.update({
-    id: '/announcements',
-    path: '/announcements',
-    getParentRoute: () => DashboardAdminRoute,
-  } as any)
-const DashboardAdminAnalyticsRoute = DashboardAdminAnalyticsRouteImport.update({
-  id: '/analytics',
-  path: '/analytics',
-  getParentRoute: () => DashboardAdminRoute,
+const DashboardStudentGradesRoute = DashboardStudentGradesRouteImport.update({
+  id: '/grades',
+  path: '/grades',
+  getParentRoute: () => DashboardStudentRoute,
 } as any)
+const DashboardStudentProfileRoute = DashboardStudentProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => DashboardStudentRoute,
+} as any)
+const DashboardStudentScheduleRoute =
+  DashboardStudentScheduleRouteImport.update({
+    id: '/schedule',
+    path: '/schedule',
+    getParentRoute: () => DashboardStudentRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -617,18 +617,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/register': {
-      id: '/register'
-      path: '/register'
-      fullPath: '/register'
-      preLoaderRoute: typeof RegisterRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -638,32 +631,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dashboard/student': {
-      id: '/dashboard/student'
-      path: '/student'
-      fullPath: '/dashboard/student'
-      preLoaderRoute: typeof DashboardStudentRouteImport
-      parentRoute: typeof DashboardRoute
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/dashboard/registrar': {
-      id: '/dashboard/registrar'
-      path: '/registrar'
-      fullPath: '/dashboard/registrar'
-      preLoaderRoute: typeof DashboardRegistrarRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/faculty': {
-      id: '/dashboard/faculty'
-      path: '/faculty'
-      fullPath: '/dashboard/faculty'
-      preLoaderRoute: typeof DashboardFacultyRouteImport
+    '/dashboard/admin': {
+      id: '/dashboard/admin'
+      path: '/admin'
+      fullPath: '/dashboard/admin'
+      preLoaderRoute: typeof DashboardAdminRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/announcements': {
@@ -673,33 +659,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAnnouncementsRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/dashboard/admin': {
-      id: '/dashboard/admin'
-      path: '/admin'
-      fullPath: '/dashboard/admin'
-      preLoaderRoute: typeof DashboardAdminRouteImport
+    '/dashboard/faculty': {
+      id: '/dashboard/faculty'
+      path: '/faculty'
+      fullPath: '/dashboard/faculty'
+      preLoaderRoute: typeof DashboardFacultyRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/dashboard/student/': {
-      id: '/dashboard/student/'
-      path: '/'
-      fullPath: '/dashboard/student/'
-      preLoaderRoute: typeof DashboardStudentIndexRouteImport
-      parentRoute: typeof DashboardStudentRoute
+    '/dashboard/registrar': {
+      id: '/dashboard/registrar'
+      path: '/registrar'
+      fullPath: '/dashboard/registrar'
+      preLoaderRoute: typeof DashboardRegistrarRouteImport
+      parentRoute: typeof DashboardRoute
     }
-    '/dashboard/registrar/': {
-      id: '/dashboard/registrar/'
-      path: '/'
-      fullPath: '/dashboard/registrar/'
-      preLoaderRoute: typeof DashboardRegistrarIndexRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/faculty/': {
-      id: '/dashboard/faculty/'
-      path: '/'
-      fullPath: '/dashboard/faculty/'
-      preLoaderRoute: typeof DashboardFacultyIndexRouteImport
-      parentRoute: typeof DashboardFacultyRoute
+    '/dashboard/student': {
+      id: '/dashboard/student'
+      path: '/student'
+      fullPath: '/dashboard/student'
+      preLoaderRoute: typeof DashboardStudentRouteImport
+      parentRoute: typeof DashboardRoute
     }
     '/dashboard/admin/': {
       id: '/dashboard/admin/'
@@ -708,228 +687,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAdminIndexRouteImport
       parentRoute: typeof DashboardAdminRoute
     }
-    '/dashboard/student/schedule': {
-      id: '/dashboard/student/schedule'
-      path: '/schedule'
-      fullPath: '/dashboard/student/schedule'
-      preLoaderRoute: typeof DashboardStudentScheduleRouteImport
-      parentRoute: typeof DashboardStudentRoute
-    }
-    '/dashboard/student/profile': {
-      id: '/dashboard/student/profile'
-      path: '/profile'
-      fullPath: '/dashboard/student/profile'
-      preLoaderRoute: typeof DashboardStudentProfileRouteImport
-      parentRoute: typeof DashboardStudentRoute
-    }
-    '/dashboard/student/grades': {
-      id: '/dashboard/student/grades'
-      path: '/grades'
-      fullPath: '/dashboard/student/grades'
-      preLoaderRoute: typeof DashboardStudentGradesRouteImport
-      parentRoute: typeof DashboardStudentRoute
-    }
-    '/dashboard/student/faculty-evaluation': {
-      id: '/dashboard/student/faculty-evaluation'
-      path: '/faculty-evaluation'
-      fullPath: '/dashboard/student/faculty-evaluation'
-      preLoaderRoute: typeof DashboardStudentFacultyEvaluationRouteImport
-      parentRoute: typeof DashboardStudentRoute
-    }
-    '/dashboard/student/enrollment': {
-      id: '/dashboard/student/enrollment'
-      path: '/enrollment'
-      fullPath: '/dashboard/student/enrollment'
-      preLoaderRoute: typeof DashboardStudentEnrollmentRouteImport
-      parentRoute: typeof DashboardStudentRoute
-    }
-    '/dashboard/student/attendance': {
-      id: '/dashboard/student/attendance'
-      path: '/attendance'
-      fullPath: '/dashboard/student/attendance'
-      preLoaderRoute: typeof DashboardStudentAttendanceRouteImport
-      parentRoute: typeof DashboardStudentRoute
-    }
-    '/dashboard/registrar/transcripts': {
-      id: '/dashboard/registrar/transcripts'
-      path: '/transcripts'
-      fullPath: '/dashboard/registrar/transcripts'
-      preLoaderRoute: typeof DashboardRegistrarTranscriptsRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/subjects': {
-      id: '/dashboard/registrar/subjects'
-      path: '/subjects'
-      fullPath: '/dashboard/registrar/subjects'
-      preLoaderRoute: typeof DashboardRegistrarSubjectsRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/students': {
-      id: '/dashboard/registrar/students'
-      path: '/students'
-      fullPath: '/dashboard/registrar/students'
-      preLoaderRoute: typeof DashboardRegistrarStudentsRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/reports': {
-      id: '/dashboard/registrar/reports'
-      path: '/reports'
-      fullPath: '/dashboard/registrar/reports'
-      preLoaderRoute: typeof DashboardRegistrarReportsRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/registrations': {
-      id: '/dashboard/registrar/registrations'
-      path: '/registrations'
-      fullPath: '/dashboard/registrar/registrations'
-      preLoaderRoute: typeof DashboardRegistrarRegistrationsRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/reenrollment': {
-      id: '/dashboard/registrar/reenrollment'
-      path: '/reenrollment'
-      fullPath: '/dashboard/registrar/reenrollment'
-      preLoaderRoute: typeof DashboardRegistrarReenrollmentRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/records': {
-      id: '/dashboard/registrar/records'
-      path: '/records'
-      fullPath: '/dashboard/registrar/records'
-      preLoaderRoute: typeof DashboardRegistrarRecordsRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/profile': {
-      id: '/dashboard/registrar/profile'
-      path: '/profile'
-      fullPath: '/dashboard/registrar/profile'
-      preLoaderRoute: typeof DashboardRegistrarProfileRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/faculty': {
-      id: '/dashboard/registrar/faculty'
-      path: '/faculty'
-      fullPath: '/dashboard/registrar/faculty'
-      preLoaderRoute: typeof DashboardRegistrarFacultyRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/evaluations': {
-      id: '/dashboard/registrar/evaluations'
-      path: '/evaluations'
-      fullPath: '/dashboard/registrar/evaluations'
-      preLoaderRoute: typeof DashboardRegistrarEvaluationsRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/enrollment': {
-      id: '/dashboard/registrar/enrollment'
-      path: '/enrollment'
-      fullPath: '/dashboard/registrar/enrollment'
-      preLoaderRoute: typeof DashboardRegistrarEnrollmentRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/curriculum': {
-      id: '/dashboard/registrar/curriculum'
-      path: '/curriculum'
-      fullPath: '/dashboard/registrar/curriculum'
-      preLoaderRoute: typeof DashboardRegistrarCurriculumRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/registrar/announcements': {
-      id: '/dashboard/registrar/announcements'
-      path: '/announcements'
-      fullPath: '/dashboard/registrar/announcements'
-      preLoaderRoute: typeof DashboardRegistrarAnnouncementsRouteImport
-      parentRoute: typeof DashboardRegistrarRoute
-    }
-    '/dashboard/faculty/subjects': {
-      id: '/dashboard/faculty/subjects'
-      path: '/subjects'
-      fullPath: '/dashboard/faculty/subjects'
-      preLoaderRoute: typeof DashboardFacultySubjectsRouteImport
-      parentRoute: typeof DashboardFacultyRoute
-    }
-    '/dashboard/faculty/subject-details': {
-      id: '/dashboard/faculty/subject-details'
-      path: '/subject-details'
-      fullPath: '/dashboard/faculty/subject-details'
-      preLoaderRoute: typeof DashboardFacultySubjectDetailsRouteImport
-      parentRoute: typeof DashboardFacultyRoute
-    }
-    '/dashboard/faculty/profile': {
-      id: '/dashboard/faculty/profile'
-      path: '/profile'
-      fullPath: '/dashboard/faculty/profile'
-      preLoaderRoute: typeof DashboardFacultyProfileRouteImport
-      parentRoute: typeof DashboardFacultyRoute
-    }
-    '/dashboard/faculty/performance': {
-      id: '/dashboard/faculty/performance'
-      path: '/performance'
-      fullPath: '/dashboard/faculty/performance'
-      preLoaderRoute: typeof DashboardFacultyPerformanceRouteImport
-      parentRoute: typeof DashboardFacultyRoute
-    }
-    '/dashboard/faculty/grades': {
-      id: '/dashboard/faculty/grades'
-      path: '/grades'
-      fullPath: '/dashboard/faculty/grades'
-      preLoaderRoute: typeof DashboardFacultyGradesRouteImport
-      parentRoute: typeof DashboardFacultyRoute
-    }
-    '/dashboard/faculty/evaluations': {
-      id: '/dashboard/faculty/evaluations'
-      path: '/evaluations'
-      fullPath: '/dashboard/faculty/evaluations'
-      preLoaderRoute: typeof DashboardFacultyEvaluationsRouteImport
-      parentRoute: typeof DashboardFacultyRoute
-    }
-    '/dashboard/faculty/classes': {
-      id: '/dashboard/faculty/classes'
-      path: '/classes'
-      fullPath: '/dashboard/faculty/classes'
-      preLoaderRoute: typeof DashboardFacultyClassesRouteImport
-      parentRoute: typeof DashboardFacultyRoute
-    }
-    '/dashboard/faculty/attendance': {
-      id: '/dashboard/faculty/attendance'
-      path: '/attendance'
-      fullPath: '/dashboard/faculty/attendance'
-      preLoaderRoute: typeof DashboardFacultyAttendanceRouteImport
-      parentRoute: typeof DashboardFacultyRoute
-    }
-    '/dashboard/faculty/announcements': {
-      id: '/dashboard/faculty/announcements'
-      path: '/announcements'
-      fullPath: '/dashboard/faculty/announcements'
-      preLoaderRoute: typeof DashboardFacultyAnnouncementsRouteImport
-      parentRoute: typeof DashboardFacultyRoute
-    }
-    '/dashboard/admin/users': {
-      id: '/dashboard/admin/users'
-      path: '/users'
-      fullPath: '/dashboard/admin/users'
-      preLoaderRoute: typeof DashboardAdminUsersRouteImport
-      parentRoute: typeof DashboardAdminRoute
-    }
-    '/dashboard/admin/settings': {
-      id: '/dashboard/admin/settings'
-      path: '/settings'
-      fullPath: '/dashboard/admin/settings'
-      preLoaderRoute: typeof DashboardAdminSettingsRouteImport
-      parentRoute: typeof DashboardAdminRoute
-    }
-    '/dashboard/admin/security': {
-      id: '/dashboard/admin/security'
-      path: '/security'
-      fullPath: '/dashboard/admin/security'
-      preLoaderRoute: typeof DashboardAdminSecurityRouteImport
-      parentRoute: typeof DashboardAdminRoute
-    }
-    '/dashboard/admin/faculty-evaluations': {
-      id: '/dashboard/admin/faculty-evaluations'
-      path: '/faculty-evaluations'
-      fullPath: '/dashboard/admin/faculty-evaluations'
-      preLoaderRoute: typeof DashboardAdminFacultyEvaluationsRouteImport
+    '/dashboard/admin/analytics': {
+      id: '/dashboard/admin/analytics'
+      path: '/analytics'
+      fullPath: '/dashboard/admin/analytics'
+      preLoaderRoute: typeof DashboardAdminAnalyticsRouteImport
       parentRoute: typeof DashboardAdminRoute
     }
     '/dashboard/admin/announcements': {
@@ -939,12 +701,250 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAdminAnnouncementsRouteImport
       parentRoute: typeof DashboardAdminRoute
     }
-    '/dashboard/admin/analytics': {
-      id: '/dashboard/admin/analytics'
-      path: '/analytics'
-      fullPath: '/dashboard/admin/analytics'
-      preLoaderRoute: typeof DashboardAdminAnalyticsRouteImport
+    '/dashboard/admin/faculty-evaluations': {
+      id: '/dashboard/admin/faculty-evaluations'
+      path: '/faculty-evaluations'
+      fullPath: '/dashboard/admin/faculty-evaluations'
+      preLoaderRoute: typeof DashboardAdminFacultyEvaluationsRouteImport
       parentRoute: typeof DashboardAdminRoute
+    }
+    '/dashboard/admin/security': {
+      id: '/dashboard/admin/security'
+      path: '/security'
+      fullPath: '/dashboard/admin/security'
+      preLoaderRoute: typeof DashboardAdminSecurityRouteImport
+      parentRoute: typeof DashboardAdminRoute
+    }
+    '/dashboard/admin/settings': {
+      id: '/dashboard/admin/settings'
+      path: '/settings'
+      fullPath: '/dashboard/admin/settings'
+      preLoaderRoute: typeof DashboardAdminSettingsRouteImport
+      parentRoute: typeof DashboardAdminRoute
+    }
+    '/dashboard/admin/users': {
+      id: '/dashboard/admin/users'
+      path: '/users'
+      fullPath: '/dashboard/admin/users'
+      preLoaderRoute: typeof DashboardAdminUsersRouteImport
+      parentRoute: typeof DashboardAdminRoute
+    }
+    '/dashboard/faculty/': {
+      id: '/dashboard/faculty/'
+      path: '/'
+      fullPath: '/dashboard/faculty/'
+      preLoaderRoute: typeof DashboardFacultyIndexRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
+    '/dashboard/faculty/announcements': {
+      id: '/dashboard/faculty/announcements'
+      path: '/announcements'
+      fullPath: '/dashboard/faculty/announcements'
+      preLoaderRoute: typeof DashboardFacultyAnnouncementsRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
+    '/dashboard/faculty/attendance': {
+      id: '/dashboard/faculty/attendance'
+      path: '/attendance'
+      fullPath: '/dashboard/faculty/attendance'
+      preLoaderRoute: typeof DashboardFacultyAttendanceRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
+    '/dashboard/faculty/classes': {
+      id: '/dashboard/faculty/classes'
+      path: '/classes'
+      fullPath: '/dashboard/faculty/classes'
+      preLoaderRoute: typeof DashboardFacultyClassesRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
+    '/dashboard/faculty/evaluations': {
+      id: '/dashboard/faculty/evaluations'
+      path: '/evaluations'
+      fullPath: '/dashboard/faculty/evaluations'
+      preLoaderRoute: typeof DashboardFacultyEvaluationsRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
+    '/dashboard/faculty/grades': {
+      id: '/dashboard/faculty/grades'
+      path: '/grades'
+      fullPath: '/dashboard/faculty/grades'
+      preLoaderRoute: typeof DashboardFacultyGradesRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
+    '/dashboard/faculty/performance': {
+      id: '/dashboard/faculty/performance'
+      path: '/performance'
+      fullPath: '/dashboard/faculty/performance'
+      preLoaderRoute: typeof DashboardFacultyPerformanceRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
+    '/dashboard/faculty/profile': {
+      id: '/dashboard/faculty/profile'
+      path: '/profile'
+      fullPath: '/dashboard/faculty/profile'
+      preLoaderRoute: typeof DashboardFacultyProfileRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
+    '/dashboard/faculty/subject-details': {
+      id: '/dashboard/faculty/subject-details'
+      path: '/subject-details'
+      fullPath: '/dashboard/faculty/subject-details'
+      preLoaderRoute: typeof DashboardFacultySubjectDetailsRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
+    '/dashboard/faculty/subjects': {
+      id: '/dashboard/faculty/subjects'
+      path: '/subjects'
+      fullPath: '/dashboard/faculty/subjects'
+      preLoaderRoute: typeof DashboardFacultySubjectsRouteImport
+      parentRoute: typeof DashboardFacultyRoute
+    }
+    '/dashboard/registrar/': {
+      id: '/dashboard/registrar/'
+      path: '/'
+      fullPath: '/dashboard/registrar/'
+      preLoaderRoute: typeof DashboardRegistrarIndexRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/announcements': {
+      id: '/dashboard/registrar/announcements'
+      path: '/announcements'
+      fullPath: '/dashboard/registrar/announcements'
+      preLoaderRoute: typeof DashboardRegistrarAnnouncementsRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/curriculum': {
+      id: '/dashboard/registrar/curriculum'
+      path: '/curriculum'
+      fullPath: '/dashboard/registrar/curriculum'
+      preLoaderRoute: typeof DashboardRegistrarCurriculumRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/enrollment': {
+      id: '/dashboard/registrar/enrollment'
+      path: '/enrollment'
+      fullPath: '/dashboard/registrar/enrollment'
+      preLoaderRoute: typeof DashboardRegistrarEnrollmentRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/evaluations': {
+      id: '/dashboard/registrar/evaluations'
+      path: '/evaluations'
+      fullPath: '/dashboard/registrar/evaluations'
+      preLoaderRoute: typeof DashboardRegistrarEvaluationsRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/faculty': {
+      id: '/dashboard/registrar/faculty'
+      path: '/faculty'
+      fullPath: '/dashboard/registrar/faculty'
+      preLoaderRoute: typeof DashboardRegistrarFacultyRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/profile': {
+      id: '/dashboard/registrar/profile'
+      path: '/profile'
+      fullPath: '/dashboard/registrar/profile'
+      preLoaderRoute: typeof DashboardRegistrarProfileRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/records': {
+      id: '/dashboard/registrar/records'
+      path: '/records'
+      fullPath: '/dashboard/registrar/records'
+      preLoaderRoute: typeof DashboardRegistrarRecordsRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/reenrollment': {
+      id: '/dashboard/registrar/reenrollment'
+      path: '/reenrollment'
+      fullPath: '/dashboard/registrar/reenrollment'
+      preLoaderRoute: typeof DashboardRegistrarReenrollmentRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/registrations': {
+      id: '/dashboard/registrar/registrations'
+      path: '/registrations'
+      fullPath: '/dashboard/registrar/registrations'
+      preLoaderRoute: typeof DashboardRegistrarRegistrationsRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/reports': {
+      id: '/dashboard/registrar/reports'
+      path: '/reports'
+      fullPath: '/dashboard/registrar/reports'
+      preLoaderRoute: typeof DashboardRegistrarReportsRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/students': {
+      id: '/dashboard/registrar/students'
+      path: '/students'
+      fullPath: '/dashboard/registrar/students'
+      preLoaderRoute: typeof DashboardRegistrarStudentsRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/subjects': {
+      id: '/dashboard/registrar/subjects'
+      path: '/subjects'
+      fullPath: '/dashboard/registrar/subjects'
+      preLoaderRoute: typeof DashboardRegistrarSubjectsRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/registrar/transcripts': {
+      id: '/dashboard/registrar/transcripts'
+      path: '/transcripts'
+      fullPath: '/dashboard/registrar/transcripts'
+      preLoaderRoute: typeof DashboardRegistrarTranscriptsRouteImport
+      parentRoute: typeof DashboardRegistrarRoute
+    }
+    '/dashboard/student/': {
+      id: '/dashboard/student/'
+      path: '/'
+      fullPath: '/dashboard/student/'
+      preLoaderRoute: typeof DashboardStudentIndexRouteImport
+      parentRoute: typeof DashboardStudentRoute
+    }
+    '/dashboard/student/attendance': {
+      id: '/dashboard/student/attendance'
+      path: '/attendance'
+      fullPath: '/dashboard/student/attendance'
+      preLoaderRoute: typeof DashboardStudentAttendanceRouteImport
+      parentRoute: typeof DashboardStudentRoute
+    }
+    '/dashboard/student/enrollment': {
+      id: '/dashboard/student/enrollment'
+      path: '/enrollment'
+      fullPath: '/dashboard/student/enrollment'
+      preLoaderRoute: typeof DashboardStudentEnrollmentRouteImport
+      parentRoute: typeof DashboardStudentRoute
+    }
+    '/dashboard/student/faculty-evaluation': {
+      id: '/dashboard/student/faculty-evaluation'
+      path: '/faculty-evaluation'
+      fullPath: '/dashboard/student/faculty-evaluation'
+      preLoaderRoute: typeof DashboardStudentFacultyEvaluationRouteImport
+      parentRoute: typeof DashboardStudentRoute
+    }
+    '/dashboard/student/grades': {
+      id: '/dashboard/student/grades'
+      path: '/grades'
+      fullPath: '/dashboard/student/grades'
+      preLoaderRoute: typeof DashboardStudentGradesRouteImport
+      parentRoute: typeof DashboardStudentRoute
+    }
+    '/dashboard/student/profile': {
+      id: '/dashboard/student/profile'
+      path: '/profile'
+      fullPath: '/dashboard/student/profile'
+      preLoaderRoute: typeof DashboardStudentProfileRouteImport
+      parentRoute: typeof DashboardStudentRoute
+    }
+    '/dashboard/student/schedule': {
+      id: '/dashboard/student/schedule'
+      path: '/schedule'
+      fullPath: '/dashboard/student/schedule'
+      preLoaderRoute: typeof DashboardStudentScheduleRouteImport
+      parentRoute: typeof DashboardStudentRoute
     }
   }
 }
