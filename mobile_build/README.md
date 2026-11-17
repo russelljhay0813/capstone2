@@ -51,6 +51,53 @@ This folder contains the Expo-based mobile client for the PIAT Academic Manageme
 - `npm run ios` — launch on iOS simulator/device
 - `npm run web` — run the app in browser mode
 
+## Android release builds
+
+Release builds use EAS Build. Install dependencies from `mobile_build`, install or use
+the EAS CLI with `npx eas-cli`, and sign in to an Expo account:
+
+```powershell
+cd mobile_build
+npm install
+npx eas-cli login
+$env:EXPO_PUBLIC_API_BASE = "https://your-deployed-piat-api.example"
+npx eas-cli build --platform android --profile preview
+```
+
+The `preview` profile produces an installable APK. Download the completed build from
+the EAS build page, or save it locally with
+`npx eas-cli build:download --id <BUILD_ID> --path .\piat-attendance.apk`.
+Transfer the APK to an Android device and open it to install; if using ADB, run
+`adb install .\piat-attendance.apk`. Android may ask you to allow installation from
+that file source.
+
+For Google Play distribution, use the `production` profile, which produces an AAB:
+
+```powershell
+npx eas-cli build --platform android --profile production
+```
+
+Set `EXPO_PUBLIC_API_BASE` to the HTTPS backend URL for every release build; EAS
+builds fail if it is not an HTTPS URL (including when a local `.env` points to
+localhost or an emulator). This value is a public API endpoint, not an API secret.
+Keep credentials and JWT secrets on the server. Increment
+`expo.version` and `expo.android.versionCode` in `app.config.js` before a new
+release. Install a newer APK over the existing installation to update it; preserve
+the same Android package and signing credentials.
+
+## Web PWA and offline behavior
+
+The web portal publishes `frontend/public/manifest.webmanifest` and registers a
+service worker in production. On a supported browser, use its Install App or Add
+to Home Screen command. The service worker caches only the offline shell, app
+icons, manifest, and same-origin build assets. It never caches navigations or
+`/api` responses, so authenticated pages and student data are not stored by the
+PWA cache.
+
+The web portal requires a network connection to load faculty rosters. Offline
+attendance entry and queued synchronization remain in the native Android app,
+which uses SQLite, secure token storage, and the existing retrying sync queue.
+
 ## Project structure
 
 - `app/` — route-based screens and app entry points

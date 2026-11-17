@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "PIAT Faculty Mobile Attendance Tracker",
+  "short_name": "PIAT Attendance",
+  "description": "Secure faculty attendance access for Philtech Institute of Arts and Technology.",
+  "start_url": "/dashboard/faculty/attendance",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#6e061d",
+  "background_color": "#f8fafc",
+  "icons": [
+    {
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/piat-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

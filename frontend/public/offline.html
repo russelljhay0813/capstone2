@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#6e061d" />
+    <meta name="robots" content="noindex" />
+    <title>Offline | PIAT Attendance</title>
+    <style>
+      :root { color-scheme: light; font-family: system-ui, sans-serif; background: #f8fafc; color: #172033; }
+      body { display: grid; min-height: 100vh; margin: 0; place-items: center; padding: 1.5rem; box-sizing: border-box; }
+      main { width: min(100%, 28rem); padding: 2rem; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 1rem; background: white; text-align: center; }
+      img { width: 5rem; height: 5rem; object-fit: contain; }
+      h1 { margin: 1rem 0 0.5rem; font-size: 1.5rem; }
+      p { color: #475569; line-height: 1.6; }
+      a, button { display: inline-block; margin: 0.5rem; padding: 0.75rem 1rem; border: 0; border-radius: 0.5rem; background: #6e061d; color: white; font: inherit; text-decoration: none; cursor: pointer; }
+      button { background: #e2e8f0; color: #172033; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/piat-logo.svg" alt="" />
+      <h1>You’re offline</h1>
+      <p>The web attendance portal needs a connection to load faculty rosters. No student or attendance data is stored in this offline page.</p>
+      <p>For offline attendance recording, use the PIAT Attendance Android app. Saved records remain on the device until synchronization is possible.</p>
+      <a href="/dashboard/faculty/attendance">Open attendance portal</a>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>
