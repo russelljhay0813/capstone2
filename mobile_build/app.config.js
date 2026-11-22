@@ -1,7 +1,10 @@
+
 import "dotenv/config";
 
 const apiBase =
-  process.env.EXPO_PUBLIC_API_BASE || process.env.API_BASE || "http://localhost:4000";
+  process.env.EXPO_PUBLIC_API_BASE ||
+  process.env.API_BASE ||
+  "http://localhost:4000";
 
 if (process.env.EAS_BUILD_PROFILE && !/^https:\/\//i.test(apiBase)) {
   throw new Error(
@@ -27,6 +30,9 @@ export default {
     },
     extra: {
       API_BASE: apiBase,
+      eas: {
+        projectId: "fb73fd30-f356-4974-b5a3-bf6deb943f9a",
+      },
     },
   },
 };

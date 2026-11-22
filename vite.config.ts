@@ -65,13 +65,13 @@ const vercelConfig: UserConfig = {
       projects: [path.resolve(__dirname, "frontend", "tsconfig.json")],
     }),
     tanstackStart(tanstackStartOptions),
+    viteReact(),
     nitro({
-      preset: "vercel", 
+      preset: "vercel",
       output: {
         dir: path.resolve(__dirname, ".vercel", "output"),
       },
     }),
-    viteReact(),
   ],
 };
 
