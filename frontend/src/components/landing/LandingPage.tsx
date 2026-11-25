@@ -45,7 +45,7 @@ export default function LandingPage() {
             aria-label="PIAT home"
             onClick={() => setIsMenuOpen(false)}
           >
-            <img src="/piat-logo.svg" alt="" className="landing-brand__logo" />
+            <img src="/piat-logo.png" alt="" className="landing-brand__logo" />
             <span className="landing-brand__text">
               <span className="landing-brand__name">PIAT</span>
               <span className="landing-brand__subtitle">
@@ -189,7 +189,7 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <div className="landing-footer__main">
           <a href="#home" className="landing-footer__identity">
-            <img src="/piat-logo.svg" alt="" loading="lazy" />
+            <img src="/piat-logo.png" alt="" loading="lazy" />
             <span>PHILTECH INSTITUTE OF ARTS AND TECHNOLOGY INC.</span>
           </a>
         </div>

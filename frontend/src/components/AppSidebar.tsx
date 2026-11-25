@@ -112,7 +112,7 @@ export function AppSidebar() {
         {!collapsed && (
           <div className="flex items-center gap-2">
             <img
-              src="/piat-logo.svg"
+              src="/piat-logo.png"
               alt="PIAT logo"
               className="h-8 w-8 rounded-md border border-sidebar-border/60 bg-white object-cover"
             />
@@ -126,7 +126,7 @@ export function AppSidebar() {
         )}
         {collapsed && (
           <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-md bg-white">
-            <img src="/piat-logo.svg" alt="PIAT logo" className="h-full w-full object-cover" />
+            <img src="/piat-logo.png" alt="PIAT logo" className="h-full w-full object-cover" />
           </div>
         )}
       </SidebarHeader>

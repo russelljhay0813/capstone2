@@ -23,9 +23,9 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/piat-logo.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/piat-logo.png",
+      "sizes": "768x768",
+      "type": "image/png",
       "purpose": "any"
     }
   ]

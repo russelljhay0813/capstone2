@@ -1,8 +1,8 @@
-const CACHE_NAME = "piat-faculty-attendance-shell-v2";
+const CACHE_NAME = "piat-faculty-attendance-shell-v3";
 const PRECACHE_URLS = [
   "/offline.html",
   "/manifest.webmanifest",
-  "/piat-logo.svg",
+  "/piat-logo.png",
   "/piat-app-icon.png",
   "/pwa-192.png",
   "/pwa-512.png",

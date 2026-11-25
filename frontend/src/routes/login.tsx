@@ -182,7 +182,7 @@ function LoginPage() {
         <div className="grid items-center gap-10 md:grid-cols-[minmax(0,1fr)_26rem] md:gap-16">
           <div className="text-center md:text-left">
             <img
-              src="/piat-logo.svg"
+              src="/piat-logo.png"
               alt="PIAT logo"
               className="mx-auto mb-6 h-16 w-16 rounded-full border border-white/40 bg-white object-cover shadow-lg md:mx-0"
             />
