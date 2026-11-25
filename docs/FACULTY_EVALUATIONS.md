@@ -23,6 +23,7 @@ Student completion is stored separately from evaluation answers. The response ta
 | `GET /api/evaluations/periods` | Admin, registrar, student | List periods (students receive open periods only) |
 | `POST /api/evaluations/periods` | Admin | Create a draft period |
 | `PUT /api/evaluations/periods/:id` | Admin | Edit a draft, activate it, or close an active period |
+| `DELETE /api/evaluations/periods/:id` | Admin | Delete a period only when it is inactive and has no submitted responses or completion history |
 | `GET /api/evaluations/questionnaire/default` | Admin | Load the standard categories, questions, and rating scale |
 | `GET /api/evaluations/periods/:id/questionnaire` | Admin | Read draft editor data and saved questions |
 | `PUT /api/evaluations/periods/:id/questionnaire` | Admin | Save categories, ordered questions, required flags, and rating scale on a draft |
@@ -33,6 +34,7 @@ Student completion is stored separately from evaluation answers. The response ta
 | `GET /api/evaluations/my-results` | Faculty | Read aggregates for the authenticated faculty member only |
 
 Academic-year and semester options are read from the existing `GET /api/meta/academic-structure` endpoint.
+Deleting an inactive period removes its period-specific questionnaire configuration and published snapshots. Periods with responses or completion records are retained to preserve historical reports; active periods must be closed before deletion.
 
 ## Verification
 

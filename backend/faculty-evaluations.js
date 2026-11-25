@@ -622,6 +622,41 @@ export function registerFacultyEvaluationRoutes(app, db, { requireRole }) {
     }),
   );
 
+  app.delete(
+    "/api/evaluations/periods/:id",
+    requireRole("admin"),
+    asyncRoute(async (req, res) => {
+      await withTransaction(db, async () => {
+        const period = await dbGet(
+          db,
+          "SELECT id, status FROM faculty_evaluations WHERE id = ?",
+          [req.params.id],
+        );
+        if (!period) throw new EvaluationError(404, "Evaluation period not found.");
+        if (period.status === "active") {
+          throw new EvaluationError(409, "Close the active evaluation period before deleting it.");
+        }
+
+        const historicalData = await dbGet(
+          db,
+          `SELECT
+             EXISTS(SELECT 1 FROM evaluation_responses WHERE evaluationId = ?) AS hasResponses,
+             EXISTS(SELECT 1 FROM evaluation_participation WHERE evaluationId = ?) AS hasParticipation`,
+          [req.params.id, req.params.id],
+        );
+        if (historicalData.hasResponses || historicalData.hasParticipation) {
+          throw new EvaluationError(
+            409,
+            "This evaluation has submitted responses or completion records. Historical evaluation data and reports must be preserved, so it cannot be deleted.",
+          );
+        }
+
+        await dbRun(db, "DELETE FROM faculty_evaluations WHERE id = ?", [req.params.id]);
+      });
+      res.json({ message: "Evaluation period deleted." });
+    }),
+  );
+
   app.put(
     "/api/evaluations/periods/:id",
     requireRole("admin"),

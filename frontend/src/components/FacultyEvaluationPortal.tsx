@@ -1,5 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/lib/auth-context";
 import {
   fetchEligibleFacultyEvaluations,
@@ -11,6 +21,7 @@ import {
   fetchMyFacultyEvaluationResults,
   fetchAcademicMetadata,
   createFacultyEvaluationPeriod,
+  deleteFacultyEvaluationPeriod,
   saveFacultyEvaluationQuestionnaire,
   updateFacultyEvaluationPeriod,
   submitFacultyEvaluation,
@@ -180,12 +191,15 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
     })),
   );
   const [periodFormOpen, setPeriodFormOpen] = useState(false);
+  const [periodPendingDeletion, setPeriodPendingDeletion] =
+    useState<FacultyEvaluationPeriod | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [periodSaving, setPeriodSaving] = useState(false);
+  const [periodDeleting, setPeriodDeleting] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -469,6 +483,40 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
       setError(
         statusError instanceof Error ? statusError.message : "Unable to update the period status.",
       );
+    }
+  };
+  const deletePeriod = async () => {
+    if (!periodPendingDeletion) return;
+    const period = periodPendingDeletion;
+    let deleted = false;
+    setPeriodDeleting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await deleteFacultyEvaluationPeriod(period.id);
+      deleted = true;
+      setPeriodPendingDeletion(null);
+      setPeriods((current) => current.filter((item) => item.id !== period.id));
+      const reportFilters =
+        filters.evaluationId === period.id ? { ...filters, evaluationId: "" } : filters;
+      const [updatedPeriods, updatedReport] = await Promise.all([
+        fetchFacultyEvaluationPeriods(),
+        fetchFacultyEvaluationReport(reportFilters),
+      ]);
+      setPeriods(updatedPeriods);
+      setReport(updatedReport);
+      if (filters.evaluationId === period.id) setFilters(reportFilters);
+      setSuccess("Evaluation period deleted.");
+    } catch (deleteError) {
+      setError(
+        deleted
+          ? "The evaluation was deleted, but the list or report summary could not be refreshed."
+          : deleteError instanceof Error
+            ? deleteError.message
+            : "Unable to delete the evaluation period.",
+      );
+    } finally {
+      setPeriodDeleting(false);
     }
   };
   const startEvaluation = async (assignment: EligibleFacultyEvaluation) => {
@@ -1120,6 +1168,22 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
                               Close Period
                             </Button>
                           )}
+                          {role === "admin" && (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              disabled={periodDeleting}
+                              aria-label={`Delete ${period.title}`}
+                              onClick={() => {
+                                setError(null);
+                                setSuccess(null);
+                                setPeriodPendingDeletion(period);
+                              }}
+                            >
+                              <Trash2 aria-hidden="true" />
+                              Delete
+                            </Button>
+                          )}
                         </div>
                       </article>
                     );
@@ -1143,6 +1207,47 @@ export function FacultyEvaluationPortal({ role }: { role: PortalRole }) {
               <p className="mt-1 text-xl font-semibold">{report?.groups.length ?? "—"}</p>
             </div>
           </div>
+
+          <AlertDialog
+            open={periodPendingDeletion !== null}
+            onOpenChange={(open) => {
+              if (!open && !periodDeleting) setPeriodPendingDeletion(null);
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete evaluation form?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete this evaluation form? This action cannot be
+                  undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {periodPendingDeletion && (
+                <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
+                  <p className="font-medium">{periodPendingDeletion.title}</p>
+                  <p className="text-muted-foreground">
+                    {periodPendingDeletion.academicYear} · {periodPendingDeletion.semester}
+                  </p>
+                </div>
+              )}
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={periodDeleting}>Cancel</AlertDialogCancel>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={periodDeleting}
+                  onClick={() => void deletePeriod()}
+                >
+                  {periodDeleting ? (
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Trash2 aria-hidden="true" />
+                  )}
+                  {periodDeleting ? "Deleting…" : "Delete"}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {role === "registrar" && (
             <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">

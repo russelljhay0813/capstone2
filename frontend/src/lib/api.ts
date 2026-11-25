@@ -1231,6 +1231,12 @@ export async function updateFacultyEvaluationPeriod(
   });
 }
 
+export async function deleteFacultyEvaluationPeriod(id: string): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/evaluations/periods/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchEvaluationCriteria(): Promise<EvaluationCriterion[]> {
   return request<EvaluationCriterion[]>("/api/evaluations/criteria");
 }

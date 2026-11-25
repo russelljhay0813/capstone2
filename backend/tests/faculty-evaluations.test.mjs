@@ -980,3 +980,127 @@ test("admin questionnaire drafts publish immutable questions for eligible studen
   assert.equal(integrity.integrity_check, "ok");
   await closeDatabase(savedRecords);
 });
+
+test("evaluation deletion is admin-only and preserves historical data while removing eligible periods", async () => {
+  const unauthenticated = await request(
+    "DELETE",
+    `/api/evaluations/periods/${separateSemesterEvaluationId}`,
+  );
+  assert.equal(unauthenticated.status, 401);
+
+  const unauthorizedStudent = await request(
+    "DELETE",
+    `/api/evaluations/periods/${separateSemesterEvaluationId}`,
+    undefined,
+    students[0].token,
+  );
+  assert.equal(unauthorizedStudent.status, 403);
+
+  const protectedPeriod = await request(
+    "DELETE",
+    `/api/evaluations/periods/${evaluationId}`,
+    undefined,
+    adminToken,
+  );
+  assert.equal(protectedPeriod.status, 409);
+  assert.match(protectedPeriod.data.error, /submitted responses or completion records/i);
+
+  const db = openTestDatabase();
+  const historicalCounts = await dbGet(
+    db,
+    `SELECT
+       (SELECT COUNT(*) FROM evaluation_responses WHERE evaluationId = ?) AS responses,
+       (SELECT COUNT(*) FROM evaluation_participation WHERE evaluationId = ?) AS participation`,
+    [evaluationId, evaluationId],
+  );
+  assert.ok(historicalCounts.responses > 0);
+  assert.ok(historicalCounts.participation > 0);
+
+  const activePeriod = await dbGet(
+    db,
+    "SELECT id FROM faculty_evaluations WHERE status = 'active' LIMIT 1",
+  );
+  assert.ok(activePeriod);
+  const activeDelete = await request(
+    "DELETE",
+    `/api/evaluations/periods/${activePeriod.id}`,
+    undefined,
+    adminToken,
+  );
+  assert.equal(activeDelete.status, 409);
+  assert.match(activeDelete.data.error, /close the active evaluation period/i);
+  await closeDatabase(db);
+
+  const closedPeriod = await request(
+    "PUT",
+    `/api/evaluations/periods/${separateSemesterEvaluationId}`,
+    { status: "closed" },
+    adminToken,
+  );
+  assert.equal(closedPeriod.status, 200, JSON.stringify(closedPeriod.data));
+
+  const configurationDb = openTestDatabase();
+  const category = await dbGet(
+    configurationDb,
+    "SELECT id, name FROM evaluation_criteria ORDER BY displayOrder LIMIT 1",
+  );
+  const question = await dbGet(
+    configurationDb,
+    "SELECT id, questionText FROM evaluation_questions WHERE criteriaId = ? LIMIT 1",
+    [category.id],
+  );
+  await dbRun(
+    configurationDb,
+    `INSERT INTO evaluation_period_categories
+     (evaluationId, criteriaId, categoryName, description, categoryOrder)
+     VALUES (?, ?, ?, NULL, 1)`,
+    [separateSemesterEvaluationId, category.id, category.name],
+  );
+  await dbRun(
+    configurationDb,
+    `INSERT INTO evaluation_period_questions
+     (evaluationId, questionId, criteriaId, categoryName, categoryOrder, questionText,
+      questionOrder, isRequired, questionType)
+     VALUES (?, ?, ?, ?, 1, ?, 1, 1, 'rating')`,
+    [separateSemesterEvaluationId, question.id, category.id, category.name, question.questionText],
+  );
+  await dbRun(
+    configurationDb,
+    `INSERT INTO evaluation_questionnaire_versions
+     (id, evaluationId, version, questionnaireJson, publishedAt)
+     VALUES (?, ?, 1, '{}', ?)`,
+    [crypto.randomUUID(), separateSemesterEvaluationId, Date.now()],
+  );
+  await closeDatabase(configurationDb);
+
+  const deletedPeriod = await request(
+    "DELETE",
+    `/api/evaluations/periods/${separateSemesterEvaluationId}`,
+    undefined,
+    adminToken,
+  );
+  assert.equal(deletedPeriod.status, 200, JSON.stringify(deletedPeriod.data));
+
+  const finalDb = openTestDatabase();
+  const deletedConfigs = await dbGet(
+    finalDb,
+    `SELECT
+       (SELECT COUNT(*) FROM evaluation_period_categories WHERE evaluationId = ?) AS categories,
+       (SELECT COUNT(*) FROM evaluation_period_questions WHERE evaluationId = ?) AS questions,
+       (SELECT COUNT(*) FROM evaluation_questionnaire_versions WHERE evaluationId = ?) AS versions`,
+    [separateSemesterEvaluationId, separateSemesterEvaluationId, separateSemesterEvaluationId],
+  );
+  assert.deepEqual(deletedConfigs, { categories: 0, questions: 0, versions: 0 });
+  const remainingSelected = await dbGet(
+    finalDb,
+    "SELECT id FROM faculty_evaluations WHERE id = ?",
+    [evaluationId],
+  );
+  assert.equal(remainingSelected.id, evaluationId);
+  await closeDatabase(finalDb);
+
+  const periods = await request("GET", "/api/evaluations/periods", undefined, adminToken);
+  assert.equal(periods.status, 200);
+  assert.ok(periods.data.some((period) => period.id === evaluationId));
+  assert.ok(!periods.data.some((period) => period.id === separateSemesterEvaluationId));
+});
